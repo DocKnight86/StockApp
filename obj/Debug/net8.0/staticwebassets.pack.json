@@ -1,24 +1,28 @@
 {
   "Files": [
     {
-      "Id": "C:\\Users\\knigh\\OneDrive\\Desktop\\StockApp\\obj\\Debug\\net8.0\\scopedcss\\projectbundle\\StockApp.bundle.scp.css",
+      "Id": "C:\\Users\\knigh\\OneDrive\\Desktop\\StockApp2\\obj\\Debug\\net8.0\\scopedcss\\projectbundle\\StockApp.bundle.scp.css",
       "PackagePath": "staticwebassets\\StockApp.xil8tswh6t.bundle.scp.css"
     },
     {
-      "Id": "C:\\Users\\knigh\\OneDrive\\Desktop\\StockApp\\wwwroot\\app.css",
+      "Id": "C:\\Users\\knigh\\OneDrive\\Desktop\\StockApp2\\wwwroot\\app.css",
       "PackagePath": "staticwebassets\\app.css"
     },
     {
-      "Id": "C:\\Users\\knigh\\OneDrive\\Desktop\\StockApp\\wwwroot\\bootstrap\\bootstrap.min.css",
+      "Id": "C:\\Users\\knigh\\OneDrive\\Desktop\\StockApp2\\wwwroot\\bootstrap\\bootstrap.min.css",
       "PackagePath": "staticwebassets\\bootstrap\\bootstrap.min.css"
     },
     {
-      "Id": "C:\\Users\\knigh\\OneDrive\\Desktop\\StockApp\\wwwroot\\bootstrap\\bootstrap.min.css.map",
+      "Id": "C:\\Users\\knigh\\OneDrive\\Desktop\\StockApp2\\wwwroot\\bootstrap\\bootstrap.min.css.map",
       "PackagePath": "staticwebassets\\bootstrap\\bootstrap.min.css.map"
     },
     {
-      "Id": "C:\\Users\\knigh\\OneDrive\\Desktop\\StockApp\\wwwroot\\favicon.png",
+      "Id": "C:\\Users\\knigh\\OneDrive\\Desktop\\StockApp2\\wwwroot\\favicon.png",
       "PackagePath": "staticwebassets\\favicon.png"
+    },
+    {
+      "Id": "C:\\Users\\knigh\\OneDrive\\Desktop\\StockApp2\\wwwroot\\js\\chartInterop.js",
+      "PackagePath": "staticwebassets\\js\\chartInterop.js"
     },
     {
       "Id": "obj\\Debug\\net8.0\\staticwebassets\\msbuild.StockApp.Microsoft.AspNetCore.StaticWebAssetEndpoints.props",
