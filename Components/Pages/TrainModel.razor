@@ -234,7 +234,7 @@
             var allRows = mlContext.Data.CreateEnumerable<RawStockData>(dataView, reuseRowObject: false).ToList();
             DebugStatus = $"Loaded {allRows.Count} lines from CSV.";
 
-            // (B) Process Data
+            // (B) Process Data (includes new engineered features: daily return and log return)
             int posCount, negCount, longestGain, longestLoss;
             var processedData = ProcessData(allRows, out posCount, out negCount, out longestGain, out longestLoss);
             PositiveCount = posCount;
@@ -246,8 +246,6 @@
 
             // (C) Analyze Patterns
             PatternCounts = AnalyzePatterns(processedData, 3);
-
-            // Optional: Mark significance vs. 50% using a naive binomial test
             foreach (var key in PatternCounts.Keys.ToList())
             {
                 var pc = PatternCounts[key];
@@ -258,7 +256,6 @@
                     pc.IsSignificant = (pValue < 0.05);
                 }
             }
-
             if (PatternCounts.Any())
             {
                 DebugStatus += $"\nFound {PatternCounts.Count} patterns.";
@@ -267,7 +264,7 @@
             // Compute 5-day moving averages for visualization.
             MovingAverages = ComputeMovingAverages(processedData, 5);
 
-            // (D) Prepare ML Data based solely on trend features.
+            // (D) Prepare ML Data (now with additional features)
             TrendMLDataList = PrepareMLDataWithTrend(processedData, 5);
             DebugStatus += $"\nPrepared {TrendMLDataList.Count} ML data rows with trend features.";
             if (TrendMLDataList.Count == 0)
@@ -276,14 +273,17 @@
                 return;
             }
 
-            // Define ML.NET pipeline
+            // Define ML.NET pipeline with additional normalization and missing-value replacement
             var transformPipeline = mlContext.Transforms.Concatenate("Features",
                     nameof(StockMLData.Close),
                     nameof(StockMLData.Volume),
                     nameof(StockMLData.Price_MA5),
                     nameof(StockMLData.Volume_MA5),
                     nameof(StockMLData.PriceDelta),
-                    nameof(StockMLData.VolumeDelta))
+                    nameof(StockMLData.VolumeDelta),
+                    nameof(StockMLData.DailyReturn),
+                    nameof(StockMLData.LogReturn))
+                .Append(mlContext.Transforms.ReplaceMissingValues("Features"))
                 .Append(mlContext.Transforms.NormalizeMinMax("Features"));
 
             // Model configurations
@@ -339,17 +339,16 @@
                     var lastMLData = currentMlDataList.Last();
                     var lastPred = await MakePredictionAsync(model, lastMLData, config.ModelName);
                     ModelResults.Add(new ModelResult
-                    {
-                        ModelName = config.ModelName,
-                        ForecastHorizon = horizon,
-                        Accuracy = metrics.Accuracy,
-                        F1Score = metrics.F1Score,
-                        Prediction = lastPred
-                    });
+                        {
+                            ModelName = config.ModelName,
+                            ForecastHorizon = horizon,
+                            Accuracy = metrics.Accuracy,
+                            F1Score = metrics.F1Score,
+                            Prediction = lastPred
+                        });
                 }
             }
-
-            DebugStatus += $"\nTraining complete. Models evaluated.";
+            DebugStatus += "\nTraining complete. Models evaluated.";
 
             // (E) Projection for 1 to 5 Days Out
             await ProjectForecastsAsync(processedData, TrendMLDataList);
@@ -373,8 +372,6 @@
     {
         double pVal = 0.0;
         double pObs = (double)x / n;
-
-        // If pObs < p0, sum from 0..x; else sum from x..n. Then multiply by 2 for two-tailed.
         int lowerBound, upperBound;
         if (pObs < p0)
         {
@@ -386,7 +383,6 @@
             lowerBound = x;
             upperBound = n;
         }
-
         for (int k = lowerBound; k <= upperBound; k++)
         {
             double prob = BinomialPMF(k, n, p0);
@@ -399,7 +395,6 @@
 
     private double BinomialPMF(int k, int n, double p)
     {
-        // Probability Mass Function for binomial: C(n,k)*p^k*(1-p)^(n-k)
         double c = (double)Factorial(n) / (Factorial(k) * Factorial(n - k));
         double pTerm = Math.Pow(p, k) * Math.Pow(1.0 - p, n - k);
         return c * pTerm;
@@ -413,7 +408,7 @@
         return f;
     }
 
-    // 4A) Prepare ML Data
+    // 4A) Prepare ML Data with additional engineered features
     private List<StockMLData> PrepareMLDataWithTrend(List<StockDataProcessed> data, int windowSize)
     {
         var mlDataList = new List<StockMLData>();
@@ -427,17 +422,22 @@
             float volumeMA = (float)data.Skip(i - windowSize + 1).Take(windowSize).Average(d => d.VolumeNumeric);
             float priceDelta = currentDay.Close - priceMA;
             float volumeDelta = currentDay.VolumeNumeric - volumeMA;
+            // Additional features: daily return and log return
+            float dailyReturn = (currentDay.Open != 0f) ? (currentDay.Close - currentDay.Open) / currentDay.Open : 0f;
+            float logReturn = (currentDay.Close > 0 && currentDay.Open > 0) ? (float)Math.Log(currentDay.Close / currentDay.Open) : 0f;
             mlDataList.Add(new StockMLData
-            {
-                Date = currentDay.Date,
-                Close = currentDay.Close,
-                Volume = currentDay.VolumeNumeric,
-                Price_MA5 = priceMA,
-                Volume_MA5 = volumeMA,
-                PriceDelta = priceDelta,
-                VolumeDelta = volumeDelta,
-                Label = futureDay.IsGain
-            });
+                {
+                    Date = currentDay.Date,
+                    Close = currentDay.Close,
+                    Volume = currentDay.VolumeNumeric,
+                    Price_MA5 = priceMA,
+                    Volume_MA5 = volumeMA,
+                    PriceDelta = priceDelta,
+                    VolumeDelta = volumeDelta,
+                    DailyReturn = dailyReturn,
+                    LogReturn = logReturn,
+                    Label = futureDay.IsGain
+                });
         }
         return mlDataList;
     }
@@ -486,16 +486,16 @@
                     longestLossStreak = currentLossStreak;
             }
             processedData.Add(new StockDataProcessed
-            {
-                Date = parsedDate,
-                Open = row.Open,
-                High = row.High,
-                Low = row.Low,
-                Close = row.Close,
-                VolumeNumeric = volumeNumeric,
-                OcPctChange = ocPctChange,
-                IsGain = isGain
-            });
+                {
+                    Date = parsedDate,
+                    Open = row.Open,
+                    High = row.High,
+                    Low = row.Low,
+                    Close = row.Close,
+                    VolumeNumeric = volumeNumeric,
+                    OcPctChange = ocPctChange,
+                    IsGain = isGain
+                });
         }
         DebugStatus += $"\nSuccessfully processed {processedData.Count} out of {rawData.Count} rows.";
         return processedData;
@@ -511,11 +511,11 @@
             double priceAvg = data.Skip(i - windowSize + 1).Take(windowSize).Average(d => d.Close);
             double volumeAvg = data.Skip(i - windowSize + 1).Take(windowSize).Average(d => d.VolumeNumeric);
             maData.Add(new MovingAverageData
-            {
-                Date = data[i].Date,
-                PriceMovingAverage = priceAvg,
-                VolumeMovingAverage = volumeAvg
-            });
+                {
+                    Date = data[i].Date,
+                    PriceMovingAverage = priceAvg,
+                    VolumeMovingAverage = volumeAvg
+                });
         }
         return maData;
     }
@@ -544,13 +544,13 @@
                 probabilityGain *= 100.0;
                 probabilityLoss *= 100.0;
                 ProjectionResults.Add(new ProjectionResult
-                {
-                    ForecastDays = daysOut,
-                    ModelName = modelName,
-                    Prediction = isGain ? "UP" : "DOWN",
-                    ProbabilityGain = probabilityGain,
-                    ProbabilityLoss = probabilityLoss
-                });
+                    {
+                        ForecastDays = daysOut,
+                        ModelName = modelName,
+                        Prediction = isGain ? "UP" : "DOWN",
+                        ProbabilityGain = probabilityGain,
+                        ProbabilityLoss = probabilityLoss
+                    });
             }
         }
     }
@@ -622,14 +622,14 @@
         {
             var prediction = predEngine.Predict(item);
             signals.Add(new TrendSignal
-            {
-                Date = item.Date,
-                Close = item.Close,
-                Prediction = prediction.PredictedLabel ? "UP" : "DOWN",
-                Probability = prediction.PredictedLabel
-                    ? prediction.Probability * 100.0
-                    : (1 - prediction.Probability) * 100.0
-            });
+                {
+                    Date = item.Date,
+                    Close = item.Close,
+                    Prediction = prediction.PredictedLabel ? "UP" : "DOWN",
+                    Probability = prediction.PredictedLabel
+                        ? prediction.Probability * 100.0
+                        : (1 - prediction.Probability) * 100.0
+                });
         }
         return signals;
     }
@@ -639,25 +639,14 @@
         if (TrendMLDataList == null || !TrendMLDataList.Any() || MovingAverages == null || !MovingAverages.Any())
             return;
 
-        // Filter to last 365 days
         var maxDate = TrendMLDataList.Max(x => x.Date);
         var cutoffDate = maxDate.AddDays(-365);
-
-        var filteredMLData = TrendMLDataList
-            .Where(x => x.Date >= cutoffDate)
-            .OrderBy(x => x.Date)
-            .ToList();
-
-        var filteredMA = MovingAverages
-            .Where(ma => ma.Date >= cutoffDate)
-            .OrderBy(ma => ma.Date)
-            .ToList();
-
+        var filteredMLData = TrendMLDataList.Where(x => x.Date >= cutoffDate).OrderBy(x => x.Date).ToList();
+        var filteredMA = MovingAverages.Where(ma => ma.Date >= cutoffDate).OrderBy(ma => ma.Date).ToList();
         if (!filteredMLData.Any() || !filteredMA.Any())
             return;
 
         var labels = filteredMA.Select(ma => ma.Date.ToString("yyyy-MM-dd")).ToList();
-
         var priceMADataset = new
         {
             label = "Price 5-Day MA",
@@ -666,7 +655,6 @@
             borderColor = "blue",
             tension = 0.1
         };
-
         var actualCloseDataset = new
         {
             label = "Actual Close",
@@ -675,17 +663,13 @@
             borderColor = "red",
             tension = 0.1
         };
-
-        // Horizon=1 signals
         var signals = GetTrendSignals(filteredMLData);
-
         var upSignals = signals.Where(s => s.Prediction == "UP")
                                .Select(s => new { x = s.Date.ToString("yyyy-MM-dd"), y = s.Close })
                                .ToList();
         var downSignals = signals.Where(s => s.Prediction == "DOWN")
                                  .Select(s => new { x = s.Date.ToString("yyyy-MM-dd"), y = s.Close })
                                  .ToList();
-
         var upDataset = new
         {
             label = "ML Trend UP",
@@ -695,7 +679,6 @@
             showLine = false,
             radius = 8
         };
-
         var downDataset = new
         {
             label = "ML Trend DOWN",
@@ -705,7 +688,6 @@
             showLine = false,
             radius = 8
         };
-
         await JS.InvokeVoidAsync("drawLineChart",
             new object[]
             {
@@ -736,8 +718,6 @@
                 await RenderTrendChartAsync();
                 trendChartRendered = true;
             }
-
-            // After the pattern table is rendered, draw the bar chart
             await RenderPatternAnalysisChartAsync();
         }
     }
@@ -747,10 +727,8 @@
     {
         if (PatternCounts == null || !PatternCounts.Any())
             return;
-
         var labels = PatternCounts.Keys.OrderBy(k => k).ToList();
         var gainPercents = labels.Select(k => PatternCounts[k].GainPercentage).ToList();
-
         var chartData = new
         {
             labels,
@@ -763,7 +741,6 @@
                 }
             }
         };
-
         await JS.InvokeVoidAsync("drawBarChart", "patternBarChart", chartData);
     }
 
@@ -804,6 +781,9 @@
         public float Volume_MA5 { get; set; }
         public float PriceDelta { get; set; }
         public float VolumeDelta { get; set; }
+        // Additional engineered features
+        public float DailyReturn { get; set; }
+        public float LogReturn { get; set; }
         public bool Label { get; set; }
     }
 
@@ -817,7 +797,6 @@
         public float Score { get; set; }
     }
 
-    // Ensure ForecastHorizon is here for your classification table
     class ModelResult
     {
         public string ModelName { get; set; } = "";
@@ -827,7 +806,6 @@
         public string Prediction { get; set; } = "";
     }
 
-    // Add IsSignificant for row highlighting
     class PatternCount
     {
         public int GainCount { get; set; } = 0;
@@ -837,7 +815,6 @@
         public bool IsSignificant { get; set; } = false;
     }
 
-    // Keep your existing projection fields
     class ProjectionResult
     {
         public int ForecastDays { get; set; }
@@ -878,10 +855,8 @@
             {
                 if (i - streak < 0)
                     continue;
-
                 bool allGains = true;
                 bool allLosses = true;
-
                 for (int j = 0; j < streak; j++)
                 {
                     if (!data[i - j - 1].IsGain)
@@ -889,7 +864,6 @@
                     if (data[i - j - 1].IsGain)
                         allLosses = false;
                 }
-
                 string patternKey = "";
                 if (allGains)
                     patternKey = $"After {streak} Gains";
@@ -897,20 +871,16 @@
                     patternKey = $"After {streak} Losses";
                 else
                     continue;
-
                 if (!patternCounts.ContainsKey(patternKey))
                 {
                     patternCounts[patternKey] = new PatternCount();
                 }
-
                 if (data[i].IsGain)
                     patternCounts[patternKey].GainCount++;
                 else
                     patternCounts[patternKey].LossCount++;
             }
         }
-
-        // Compute percentages
         foreach (var key in patternCounts.Keys.ToList())
         {
             var count = patternCounts[key];
