@@ -36,9 +36,10 @@
               "RelativeDocumentMoniker": "wwwroot\\js\\chartInterop.js",
               "ToolTip": "C:\\Users\\knigh\\OneDrive\\Desktop\\StockApp2\\wwwroot\\js\\chartInterop.js",
               "RelativeToolTip": "wwwroot\\js\\chartInterop.js",
-              "ViewState": "AgIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==",
+              "ViewState": "AgIAABUAAAAAAAAAAAAAACEAAAAAAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.001646|",
-              "WhenOpened": "2025-03-13T15:25:32.747Z"
+              "WhenOpened": "2025-03-13T15:25:32.747Z",
+              "EditorCaption": ""
             },
             {
               "$type": "Document",
@@ -72,7 +73,7 @@
               "RelativeDocumentMoniker": "Components\\Pages\\TrainModel.razor",
               "ToolTip": "C:\\Users\\knigh\\OneDrive\\Desktop\\StockApp2\\Components\\Pages\\TrainModel.razor",
               "RelativeToolTip": "Components\\Pages\\TrainModel.razor",
-              "ViewState": "AgIAAAADAAAAAAAAAAApwBIDAAAnAAAAAAAAAA==",
+              "ViewState": "AgIAAKACAAAAAAAAAAApwAUDAAANAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000759|",
               "WhenOpened": "2025-01-15T00:17:44.344Z",
               "EditorCaption": ""
