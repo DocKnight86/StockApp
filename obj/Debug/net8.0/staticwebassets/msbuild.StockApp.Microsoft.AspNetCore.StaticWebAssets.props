@@ -84,8 +84,8 @@
       <RelatedAsset></RelatedAsset>
       <AssetTraitName></AssetTraitName>
       <AssetTraitValue></AssetTraitValue>
-      <Fingerprint>i5253muot4</Fingerprint>
-      <Integrity>JnXhJ/BgyRlplQkgiPpX+2m6VME+3TRpcPz/CDthI64=</Integrity>
+      <Fingerprint>loo4uzd5ul</Fingerprint>
+      <Integrity>C1BKg2Dq+rzmwgr0WyUUhUQfYr6bHiR3lbA2MnNEfQY=</Integrity>
       <CopyToOutputDirectory>Never</CopyToOutputDirectory>
       <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
       <OriginalItemSpec>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\staticwebassets\js\chartInterop.js'))</OriginalItemSpec>

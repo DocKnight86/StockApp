@@ -1,6 +1,6 @@
 {
   "Version": 1,
-  "Hash": "ay6O4fiJrVE5YpElmye3ofruvP5uZFPoUITvCT3H2TA=",
+  "Hash": "qNODxQUsX975lpNf2u4mInCdIX7aMFogP2e2DDCbdtI=",
   "Source": "StockApp",
   "BasePath": "_content/StockApp",
   "Mode": "Default",
@@ -157,8 +157,8 @@
       "RelatedAsset": "",
       "AssetTraitName": "",
       "AssetTraitValue": "",
-      "Fingerprint": "i5253muot4",
-      "Integrity": "JnXhJ/BgyRlplQkgiPpX+2m6VME+3TRpcPz/CDthI64=",
+      "Fingerprint": "loo4uzd5ul",
+      "Integrity": "C1BKg2Dq+rzmwgr0WyUUhUQfYr6bHiR3lbA2MnNEfQY=",
       "CopyToOutputDirectory": "Never",
       "CopyToPublishDirectory": "PreserveNewest",
       "OriginalItemSpec": "wwwroot\\js\\chartInterop.js"
@@ -494,51 +494,6 @@
       ]
     },
     {
-      "Route": "js/chartInterop.i5253muot4.js",
-      "AssetFile": "C:\\Users\\knigh\\OneDrive\\Desktop\\StockApp2\\wwwroot\\js\\chartInterop.js",
-      "Selectors": [],
-      "ResponseHeaders": [
-        {
-          "Name": "Accept-Ranges",
-          "Value": "bytes"
-        },
-        {
-          "Name": "Content-Length",
-          "Value": "2118"
-        },
-        {
-          "Name": "Content-Type",
-          "Value": "text/javascript"
-        },
-        {
-          "Name": "ETag",
-          "Value": "\"JnXhJ/BgyRlplQkgiPpX+2m6VME+3TRpcPz/CDthI64=\""
-        },
-        {
-          "Name": "Last-Modified",
-          "Value": "Thu, 13 Mar 2025 16:06:00 GMT"
-        },
-        {
-          "Name": "Cache-Control",
-          "Value": "max-age=31536000, immutable"
-        }
-      ],
-      "EndpointProperties": [
-        {
-          "Name": "fingerprint",
-          "Value": "i5253muot4"
-        },
-        {
-          "Name": "label",
-          "Value": "js/chartInterop.js"
-        },
-        {
-          "Name": "integrity",
-          "Value": "sha256-JnXhJ/BgyRlplQkgiPpX+2m6VME+3TRpcPz/CDthI64="
-        }
-      ]
-    },
-    {
       "Route": "js/chartInterop.js",
       "AssetFile": "C:\\Users\\knigh\\OneDrive\\Desktop\\StockApp2\\wwwroot\\js\\chartInterop.js",
       "Selectors": [],
@@ -549,7 +504,7 @@
         },
         {
           "Name": "Content-Length",
-          "Value": "2118"
+          "Value": "2292"
         },
         {
           "Name": "Content-Type",
@@ -557,11 +512,11 @@
         },
         {
           "Name": "ETag",
-          "Value": "\"JnXhJ/BgyRlplQkgiPpX+2m6VME+3TRpcPz/CDthI64=\""
+          "Value": "\"C1BKg2Dq+rzmwgr0WyUUhUQfYr6bHiR3lbA2MnNEfQY=\""
         },
         {
           "Name": "Last-Modified",
-          "Value": "Thu, 13 Mar 2025 16:06:00 GMT"
+          "Value": "Thu, 13 Mar 2025 18:26:04 GMT"
         },
         {
           "Name": "Cache-Control",
@@ -571,7 +526,52 @@
       "EndpointProperties": [
         {
           "Name": "integrity",
-          "Value": "sha256-JnXhJ/BgyRlplQkgiPpX+2m6VME+3TRpcPz/CDthI64="
+          "Value": "sha256-C1BKg2Dq+rzmwgr0WyUUhUQfYr6bHiR3lbA2MnNEfQY="
+        }
+      ]
+    },
+    {
+      "Route": "js/chartInterop.loo4uzd5ul.js",
+      "AssetFile": "C:\\Users\\knigh\\OneDrive\\Desktop\\StockApp2\\wwwroot\\js\\chartInterop.js",
+      "Selectors": [],
+      "ResponseHeaders": [
+        {
+          "Name": "Accept-Ranges",
+          "Value": "bytes"
+        },
+        {
+          "Name": "Content-Length",
+          "Value": "2292"
+        },
+        {
+          "Name": "Content-Type",
+          "Value": "text/javascript"
+        },
+        {
+          "Name": "ETag",
+          "Value": "\"C1BKg2Dq+rzmwgr0WyUUhUQfYr6bHiR3lbA2MnNEfQY=\""
+        },
+        {
+          "Name": "Last-Modified",
+          "Value": "Thu, 13 Mar 2025 18:26:04 GMT"
+        },
+        {
+          "Name": "Cache-Control",
+          "Value": "max-age=31536000, immutable"
+        }
+      ],
+      "EndpointProperties": [
+        {
+          "Name": "fingerprint",
+          "Value": "loo4uzd5ul"
+        },
+        {
+          "Name": "label",
+          "Value": "js/chartInterop.js"
+        },
+        {
+          "Name": "integrity",
+          "Value": "sha256-C1BKg2Dq+rzmwgr0WyUUhUQfYr6bHiR3lbA2MnNEfQY="
         }
       ]
     },

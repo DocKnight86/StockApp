@@ -3,16 +3,16 @@
   "WorkspaceRootPath": "C:\\Users\\knigh\\OneDrive\\Desktop\\StockApp2\\",
   "Documents": [
     {
-      "AbsoluteMoniker": "D:0:0:{1327E9F2-947E-493C-86DB-C12BE3C87D6F}|StockApp.csproj|c:\\users\\knigh\\onedrive\\desktop\\stockapp2\\components\\pages\\trainmodel.razor||{40D31677-CBC0-4297-A9EF-89D907823A98}",
-      "RelativeMoniker": "D:0:0:{1327E9F2-947E-493C-86DB-C12BE3C87D6F}|StockApp.csproj|solutionrelative:components\\pages\\trainmodel.razor||{40D31677-CBC0-4297-A9EF-89D907823A98}"
-    },
-    {
       "AbsoluteMoniker": "D:0:0:{1327E9F2-947E-493C-86DB-C12BE3C87D6F}|StockApp.csproj|c:\\users\\knigh\\onedrive\\desktop\\stockapp2\\wwwroot\\js\\chartinterop.js||{14D17961-FE51-464D-9111-C4AF11D7D99A}",
       "RelativeMoniker": "D:0:0:{1327E9F2-947E-493C-86DB-C12BE3C87D6F}|StockApp.csproj|solutionrelative:wwwroot\\js\\chartinterop.js||{14D17961-FE51-464D-9111-C4AF11D7D99A}"
     },
     {
       "AbsoluteMoniker": "D:0:0:{1327E9F2-947E-493C-86DB-C12BE3C87D6F}|StockApp.csproj|c:\\users\\knigh\\onedrive\\desktop\\stockapp2\\components\\app.razor||{40D31677-CBC0-4297-A9EF-89D907823A98}",
       "RelativeMoniker": "D:0:0:{1327E9F2-947E-493C-86DB-C12BE3C87D6F}|StockApp.csproj|solutionrelative:components\\app.razor||{40D31677-CBC0-4297-A9EF-89D907823A98}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{1327E9F2-947E-493C-86DB-C12BE3C87D6F}|StockApp.csproj|c:\\users\\knigh\\onedrive\\desktop\\stockapp2\\components\\pages\\trainmodel.razor||{40D31677-CBC0-4297-A9EF-89D907823A98}",
+      "RelativeMoniker": "D:0:0:{1327E9F2-947E-493C-86DB-C12BE3C87D6F}|StockApp.csproj|solutionrelative:components\\pages\\trainmodel.razor||{40D31677-CBC0-4297-A9EF-89D907823A98}"
     },
     {
       "AbsoluteMoniker": "D:0:0:{1327E9F2-947E-493C-86DB-C12BE3C87D6F}|StockApp.csproj|c:\\users\\knigh\\onedrive\\desktop\\stockapp2\\program.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
@@ -26,31 +26,33 @@
       "DocumentGroups": [
         {
           "DockedWidth": 200,
-          "SelectedChildIndex": 3,
+          "SelectedChildIndex": 0,
           "Children": [
             {
               "$type": "Document",
-              "DocumentIndex": 1,
+              "DocumentIndex": 0,
               "Title": "chartInterop.js",
               "DocumentMoniker": "C:\\Users\\knigh\\OneDrive\\Desktop\\StockApp2\\wwwroot\\js\\chartInterop.js",
               "RelativeDocumentMoniker": "wwwroot\\js\\chartInterop.js",
               "ToolTip": "C:\\Users\\knigh\\OneDrive\\Desktop\\StockApp2\\wwwroot\\js\\chartInterop.js",
               "RelativeToolTip": "wwwroot\\js\\chartInterop.js",
-              "ViewState": "AgIAAC8AAAAAAAAAAAAuwEcAAAAAAAAAAAAAAA==",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.001646|",
-              "WhenOpened": "2025-03-13T15:25:32.747Z"
+              "WhenOpened": "2025-03-13T15:25:32.747Z",
+              "EditorCaption": ""
             },
             {
               "$type": "Document",
-              "DocumentIndex": 2,
+              "DocumentIndex": 1,
               "Title": "App.razor",
               "DocumentMoniker": "C:\\Users\\knigh\\OneDrive\\Desktop\\StockApp2\\Components\\App.razor",
               "RelativeDocumentMoniker": "Components\\App.razor",
               "ToolTip": "C:\\Users\\knigh\\OneDrive\\Desktop\\StockApp2\\Components\\App.razor",
               "RelativeToolTip": "Components\\App.razor",
-              "ViewState": "AgIAAAAAAAAAAAAAAAAAABcAAAAHAAAAAAAAAA==",
+              "ViewState": "AgIAAAMAAAAAAAAAAAAAABcAAAAHAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000759|",
-              "WhenOpened": "2025-03-13T15:06:32.915Z"
+              "WhenOpened": "2025-03-13T15:06:32.915Z",
+              "EditorCaption": ""
             },
             {
               "$type": "Document",
@@ -66,13 +68,13 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 0,
+              "DocumentIndex": 2,
               "Title": "TrainModel.razor",
               "DocumentMoniker": "C:\\Users\\knigh\\OneDrive\\Desktop\\StockApp2\\Components\\Pages\\TrainModel.razor",
               "RelativeDocumentMoniker": "Components\\Pages\\TrainModel.razor",
               "ToolTip": "C:\\Users\\knigh\\OneDrive\\Desktop\\StockApp2\\Components\\Pages\\TrainModel.razor",
               "RelativeToolTip": "Components\\Pages\\TrainModel.razor",
-              "ViewState": "AgIAAHECAAAAAAAAAAAQwHUCAAAdAAAAAAAAAA==",
+              "ViewState": "AgIAAA4AAAAAAAAAAAAywBIAAACEAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000759|",
               "WhenOpened": "2025-01-15T00:17:44.344Z",
               "EditorCaption": ""
