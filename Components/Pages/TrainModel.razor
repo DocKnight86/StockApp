@@ -145,17 +145,15 @@
     <h4 class="mt-4">Model Accuracy Chart</h4>
     <canvas id="myScatterChart" width="400" height="400"></canvas>
 
-    <!-- Trend Chart Section (Moving Averages) -->
-    <h4 class="mt-4">5-Day Moving Averages Trend</h4>
+    <!-- Trend Chart Section (Overlay Actual Close, 5-Day MA, and ML Trend Signals) -->
+    <h4 class="mt-4">Trend Chart: Actual Close vs 5-Day MA with ML Trend Signals</h4>
     <canvas id="trendChart" width="600" height="400"></canvas>
 }
 
 @code {
-    // -----------------------------------------
     // 1) UI / State
-    // -----------------------------------------
-    private string CsvFilePath { get; set; } = @"C:\Users\knigh\OneDrive\Documents\INTC_DailyData.csv"; // Default CSV path
-    private int forecastHorizon { get; set; } = 5; // Forecast horizon in days
+    private string CsvFilePath { get; set; } = @"C:\Users\knigh\OneDrive\Documents\INTC_DailyData.csv";
+    private int forecastHorizon { get; set; } = 5;
     private string TrainStatus { get; set; } = "";
     private string DebugStatus { get; set; } = "";
     private bool ModelTrained { get; set; } = false;
@@ -171,12 +169,12 @@
     // Projection Results
     private List<ProjectionResult> ProjectionResults { get; set; } = new List<ProjectionResult>();
 
-    // For trend visualization (moving averages)
+    // For trend visualization
     private List<MovingAverageData> MovingAverages { get; set; } = new List<MovingAverageData>();
+    // Store ML data (with trend features and Date) for charting trend signals.
+    private List<StockMLData> TrendMLDataList { get; set; } = new List<StockMLData>();
 
-    // -----------------------------------------
-    // 2) ML.NET
-    // -----------------------------------------
+    // 2) ML.NET and Model Storage
     private MLContext mlContext = new MLContext(seed: 0);
     private bool isTraining = false;
     private bool isPredicting = false;
@@ -184,9 +182,7 @@
     private bool scatterChartRendered = false;
     private bool trendChartRendered = false;
 
-    // -----------------------------------------
-    // 3) TrainModelAsync
-    // -----------------------------------------
+    // 3) Main Training Loop
     private async Task TrainModelAsync()
     {
         try
@@ -243,9 +239,9 @@
             MovingAverages = ComputeMovingAverages(processedData, 5);
 
             // (D) Prepare ML Data based solely on trend features.
-            var mlDataList = PrepareMLDataWithTrend(processedData, 5);
-            DebugStatus += $"\nPrepared {mlDataList.Count} ML data rows with trend features.";
-            if (mlDataList.Count == 0)
+            TrendMLDataList = PrepareMLDataWithTrend(processedData, 5);
+            DebugStatus += $"\nPrepared {TrendMLDataList.Count} ML data rows with trend features.";
+            if (TrendMLDataList.Count == 0)
             {
                 TrainStatus = "No ML data rows created. Check your data and forecast horizon.";
                 return;
@@ -326,7 +322,7 @@
 
             DebugStatus += $"\nTraining complete. Models evaluated.";
             // (E) Projection for 1 to 5 Days Out
-            await ProjectForecastsAsync(processedData, mlDataList);
+            await ProjectForecastsAsync(processedData, TrendMLDataList);
             ModelTrained = true;
             TrainStatus = "Training complete. Models evaluated with test data.";
         }
@@ -342,26 +338,23 @@
         }
     }
 
-    // -----------------------------------------
-    // 4A) New Data Preparation Method: Use Trend Features Only
-    // -----------------------------------------
+    // 4A) New Data Preparation Method: Use Trend Features Only (includes Date)
     private List<StockMLData> PrepareMLDataWithTrend(List<StockDataProcessed> data, int windowSize)
     {
         var mlDataList = new List<StockMLData>();
-        // Start when enough data exists for the window.
         for (int i = windowSize - 1; i < data.Count; i++)
         {
             if (i + forecastHorizon >= data.Count)
                 continue;
             var currentDay = data[i];
             var futureDay = data[i + forecastHorizon];
-            // Compute moving averages for the window.
             float priceMA = (float)data.Skip(i - windowSize + 1).Take(windowSize).Average(d => d.Close);
             float volumeMA = (float)data.Skip(i - windowSize + 1).Take(windowSize).Average(d => d.VolumeNumeric);
             float priceDelta = currentDay.Close - priceMA;
             float volumeDelta = currentDay.VolumeNumeric - volumeMA;
             mlDataList.Add(new StockMLData
                 {
+                    Date = currentDay.Date,
                     Close = currentDay.Close,
                     Volume = currentDay.VolumeNumeric,
                     Price_MA5 = priceMA,
@@ -374,9 +367,7 @@
         return mlDataList;
     }
 
-    // -----------------------------------------
     // 5) Data Analysis Methods
-    // -----------------------------------------
     private List<StockDataProcessed> ProcessData(List<RawStockData> rawData, out int positiveCount, out int negativeCount, out int longestGainStreak, out int longestLossStreak)
     {
         var processedData = new List<StockDataProcessed>();
@@ -451,9 +442,7 @@
         return maData;
     }
 
-    // -----------------------------------------
     // 6) Projection Methods
-    // -----------------------------------------
     private async Task ProjectForecastsAsync(List<StockDataProcessed> data, List<StockMLData> mlDataList)
     {
         ProjectionResults.Clear();
@@ -488,9 +477,7 @@
         }
     }
 
-    // -----------------------------------------
-    // 7) MakePredictionAsync
-    // -----------------------------------------
+    // 7) MakePredictionAsync Method
     private async Task<string> MakePredictionAsync(ITransformer model, StockMLData input, string modelName)
     {
         try
@@ -519,17 +506,13 @@
         }
     }
 
-    // -----------------------------------------
     // 8) Sigmoid Function
-    // -----------------------------------------
     private double Sigmoid(float score)
     {
         return 1.0 / (1.0 + Math.Exp(-score));
     }
 
-    // -----------------------------------------
     // 9) Chart Rendering Methods
-    // -----------------------------------------
     private async Task RenderChartAsync()
     {
         if (ModelResults == null || !ModelResults.Any())
@@ -545,31 +528,127 @@
         await JS.InvokeVoidAsync("drawScatterChart", grouped);
     }
 
-    private async Task RenderTrendChartAsync()
+    // New method: GetTrendSignals computes predictions for each ML data point using the horizon=1 model.
+    private List<TrendSignal> GetTrendSignals(List<StockMLData> mlData)
     {
-        if (MovingAverages == null || !MovingAverages.Any())
-            return;
-        var labels = MovingAverages.Select(ma => ma.Date.ToString("yyyy-MM-dd")).ToList();
-        var priceDataset = new
+        var signals = new List<TrendSignal>();
+        if (!trainedModelsPerHorizon.ContainsKey(1) || !mlData.Any())
+            return signals;
+        var (model, modelName) = trainedModelsPerHorizon[1].First();
+        var predEngine = mlContext.Model.CreatePredictionEngine<StockMLData, ChunkPrediction>(model);
+        foreach (var item in mlData)
         {
-            label = "Price 5-Day MA",
-            data = MovingAverages.Select(ma => ma.PriceMovingAverage).ToList(),
-            fill = false,
-            borderColor = "blue"
-        };
-        var volumeDataset = new
-        {
-            label = "Volume 5-Day MA",
-            data = MovingAverages.Select(ma => ma.VolumeMovingAverage).ToList(),
-            fill = false,
-            borderColor = "green"
-        };
-        await JS.InvokeVoidAsync("drawLineChart", new[] { priceDataset, volumeDataset }, labels);
+            var prediction = predEngine.Predict(item);
+            signals.Add(new TrendSignal
+                {
+                    Date = item.Date,
+                    Close = item.Close,
+                    Prediction = prediction.PredictedLabel ? "UP" : "DOWN",
+                    Probability = prediction.PredictedLabel ? prediction.Probability * 100.0 : (1 - prediction.Probability) * 100.0
+                });
+        }
+        return signals;
     }
 
-    // -----------------------------------------
+    private async Task RenderTrendChartAsync()
+    {
+        // If there's no data, exit
+        if (TrendMLDataList == null || !TrendMLDataList.Any() || MovingAverages == null || !MovingAverages.Any())
+            return;
+
+        // 1) Determine the cutoff date: last 365 days from the maximum date in TrendMLDataList
+        var maxDate = TrendMLDataList.Max(x => x.Date);
+        var cutoffDate = maxDate.AddDays(-365);
+
+        // 2) Filter ML data and moving average data to last 365 days
+        var filteredMLData = TrendMLDataList
+            .Where(x => x.Date >= cutoffDate)
+            .OrderBy(x => x.Date)
+            .ToList();
+
+        var filteredMA = MovingAverages
+            .Where(ma => ma.Date >= cutoffDate)
+            .OrderBy(ma => ma.Date)
+            .ToList();
+
+        // If there's nothing left after filtering, exit
+        if (!filteredMLData.Any() || !filteredMA.Any())
+            return;
+
+        // 3) Create date labels from the filtered moving average list
+        var labels = filteredMA.Select(ma => ma.Date.ToString("yyyy-MM-dd")).ToList();
+
+        // 4) Create dataset for 5-Day MA
+        var priceMADataset = new
+        {
+            label = "Price 5-Day MA",
+            data = filteredMA.Select(ma => ma.PriceMovingAverage).ToList(),
+            fill = false,
+            borderColor = "blue",
+            tension = 0.1
+        };
+
+        // 5) Create dataset for actual closing prices from the filtered ML data
+        var actualCloseDataset = new
+        {
+            label = "Actual Close",
+            data = filteredMLData.Select(x => x.Close).ToList(),
+            fill = false,
+            borderColor = "red",
+            tension = 0.1
+        };
+
+        // 6) Generate trend signals using horizon=1 model, then filter them to last 365 days
+        var signals = GetTrendSignals(filteredMLData);
+
+        // Split signals into UP and DOWN for separate markers
+        var upSignals = signals.Where(s => s.Prediction == "UP")
+                               .Select(s => new { x = s.Date.ToString("yyyy-MM-dd"), y = s.Close })
+                               .ToList();
+
+        var downSignals = signals.Where(s => s.Prediction == "DOWN")
+                                 .Select(s => new { x = s.Date.ToString("yyyy-MM-dd"), y = s.Close })
+                                 .ToList();
+
+        // 7) Build marker datasets for UP and DOWN signals
+        var upDataset = new
+        {
+            label = "ML Trend UP",
+            data = upSignals,
+            pointStyle = "triangle",
+            backgroundColor = "green",
+            showLine = false,
+            radius = 8
+        };
+
+        var downDataset = new
+        {
+            label = "ML Trend DOWN",
+            data = downSignals,
+            pointStyle = "rect",
+            backgroundColor = "orange",
+            showLine = false,
+            radius = 8
+        };
+
+        // 8) Invoke the JavaScript function to draw the line chart
+        await JS.InvokeVoidAsync("drawLineChart",
+            new object[]
+            {
+            new object[]
+            {
+                priceMADataset,
+                actualCloseDataset,
+                upDataset,
+                downDataset
+            },
+            labels
+            }
+        );
+    }
+
+
     // 10) Lifecycle: Render Charts After DOM Update
-    // -----------------------------------------
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (ModelTrained)
@@ -587,17 +666,13 @@
         }
     }
 
-    // -----------------------------------------
     // 11) Dispose Method
-    // -----------------------------------------
     public void Dispose()
     {
         // Cleanup if necessary.
     }
 
-    // -----------------------------------------
     // 12) Data Models
-    // -----------------------------------------
     class RawStockData
     {
         [LoadColumn(0)] public string Date { get; set; } = "";
@@ -620,9 +695,10 @@
         public bool IsGain { get; set; }
     }
 
-    // Updated ML data model using trend features.
+    // Updated ML data model using trend features; now includes Date for tracking.
     class StockMLData
     {
+        public DateTime Date { get; set; }
         public float Close { get; set; }
         public float Volume { get; set; }
         public float Price_MA5 { get; set; }
@@ -681,9 +757,16 @@
         public double VolumeMovingAverage { get; set; }
     }
 
-    // -----------------------------------------
+    // New class for trend signals
+    class TrendSignal
+    {
+        public DateTime Date { get; set; }
+        public string Prediction { get; set; } = "";
+        public double Probability { get; set; }
+        public float Close { get; set; }
+    }
+
     // 13) AnalyzePatterns Method
-    // -----------------------------------------
     private Dictionary<string, PatternCount> AnalyzePatterns(List<StockDataProcessed> data, int maxStreak)
     {
         var patternCounts = new Dictionary<string, PatternCount>();

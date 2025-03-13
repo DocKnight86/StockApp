@@ -38,8 +38,7 @@
               "RelativeToolTip": "wwwroot\\js\\chartInterop.js",
               "ViewState": "AgIAAC8AAAAAAAAAAAAuwEcAAAAAAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.001646|",
-              "WhenOpened": "2025-03-13T15:25:32.747Z",
-              "EditorCaption": ""
+              "WhenOpened": "2025-03-13T15:25:32.747Z"
             },
             {
               "$type": "Document",
@@ -51,8 +50,7 @@
               "RelativeToolTip": "Components\\App.razor",
               "ViewState": "AgIAAAAAAAAAAAAAAAAAABcAAAAHAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000759|",
-              "WhenOpened": "2025-03-13T15:06:32.915Z",
-              "EditorCaption": ""
+              "WhenOpened": "2025-03-13T15:06:32.915Z"
             },
             {
               "$type": "Document",
@@ -74,10 +72,20 @@
               "RelativeDocumentMoniker": "Components\\Pages\\TrainModel.razor",
               "ToolTip": "C:\\Users\\knigh\\OneDrive\\Desktop\\StockApp2\\Components\\Pages\\TrainModel.razor",
               "RelativeToolTip": "Components\\Pages\\TrainModel.razor",
-              "ViewState": "AgIAAMkCAAAAAAAAAAAuwOECAAAAAAAAAAAAAA==",
+              "ViewState": "AgIAAHECAAAAAAAAAAAQwHUCAAAdAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000759|",
               "WhenOpened": "2025-01-15T00:17:44.344Z",
               "EditorCaption": ""
+            }
+          ]
+        },
+        {
+          "DockedWidth": 1087,
+          "SelectedChildIndex": -1,
+          "Children": [
+            {
+              "$type": "Bookmark",
+              "Name": "ST:0:0:{d78612c7-9962-4b83-95d9-268046dad23a}"
             }
           ]
         }
