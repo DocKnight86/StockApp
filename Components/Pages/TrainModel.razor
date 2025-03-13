@@ -5,9 +5,20 @@
 @using System.IO
 @using System.Linq
 @using System.Globalization
+@inject IJSRuntime JS
 @implements IDisposable
 
-<h3>Stock Data Analysis and Prediction</h3>
+<h3>Stock Data Analysis and Prediction (Trend-Based Predictions)</h3>
+
+<!-- Explanation Box for Pattern Analysis -->
+<div class="alert alert-info" role="alert">
+    <strong>How to read the Pattern Analysis table:</strong>
+    <ul>
+        <li><strong>Streak:</strong> A consecutive run of gain or loss days. For example, "After 2 Gains" means exactly 2 consecutive up days just occurred.</li>
+        <li><strong>Gain Percentage:</strong> How often the next day was also a gain after that streak. If it's 52%, that’s slightly above random chance (50%).</li>
+        <li>This analysis is purely historical and does not guarantee future results.</li>
+    </ul>
+</div>
 
 <!-- Training Section -->
 <div class="mb-3">
@@ -47,9 +58,10 @@
                 </tr>
             </thead>
             <tbody>
-                @foreach (var pattern in PatternCounts)
+                @foreach (var pattern in PatternCounts.OrderBy(p => p.Key))
                 {
-                    <tr>
+                    bool isSig = pattern.Value.IsSignificant;  // highlight if p < 0.05
+                    <tr style="@((isSig ? "background-color: #d4edda;" : ""))">
                         <td>@pattern.Key</td>
                         <td>@pattern.Value.GainCount</td>
                         <td>@($"{pattern.Value.GainPercentage:F2}%")</td>
@@ -59,6 +71,9 @@
                 }
             </tbody>
         </table>
+
+        <h5>Pattern Analysis Chart</h5>
+        <canvas id="patternBarChart" width="600" height="300"></canvas>
     }
     else
     {
@@ -73,7 +88,6 @@
                 <tr>
                     <th>Forecast Horizon (Days)</th>
                     <th>Model</th>
-                    <th>Accuracy</th>
                     <th>F1 Score</th>
                     <th>Last Prediction</th>
                 </tr>
@@ -84,7 +98,6 @@
                     <tr>
                         <td>@result.ForecastHorizon</td>
                         <td>@result.ModelName</td>
-                        <td>@($"{result.Accuracy * 100:F2}%")</td>
                         <td>@($"{result.F1Score * 100:F2}%")</td>
                         <td>@result.Prediction</td>
                     </tr>
@@ -140,15 +153,26 @@
             <span class="visually-hidden">Predicting...</span>
         </div>
     }
+
+    <!-- Scatter Chart Section (Accuracy Chart) -->
+    <h4 class="mt-4">Model F1 Score Chart</h4>
+    <p class="mt-2">
+        <strong>F1 Score Explanation:</strong>
+        The F1 score in machine learning is a metric that evaluates a model's performance by combining precision and recall into a single value, providing a balanced measure of a classification model's accuracy, especially useful for imbalanced datasets. An F1 score above 55% can be beneficial when predicting the movement of individual stocks.
+    </p>
+    <canvas id="myScatterChart" width="400" height="400"></canvas>
+
+    <!-- Trend Chart Section (Overlay Actual Close, 5-Day MA, and ML Trend Signals) -->
+    <h4 class="mt-4">Trend Chart: Actual Close vs 5-Day MA with ML Trend Signals</h4>
+    <canvas id="trendChart" width="600" height="400"></canvas>
 }
 
 @code {
-    // -----------------------------------------
-    // 1) UI / State
-    // -----------------------------------------
-    private string CsvFilePath { get; set; } = @"C:\Users\knigh\OneDrive\Documents\INTC_DailyData.csv"; // Default path
-    private int forecastHorizon { get; set; } = 5;    // Updated to 5 days as per user input
+    private int LookBackYears { get; set; } = 6; // looking back 6 years for trends
 
+    // Existing properties...
+    private string CsvFilePath { get; set; } = "";
+    private int forecastHorizon { get; set; } = 5;
     private string TrainStatus { get; set; } = "";
     private string DebugStatus { get; set; } = "";
     private bool ModelTrained { get; set; } = false;
@@ -164,19 +188,19 @@
     // Projection Results
     private List<ProjectionResult> ProjectionResults { get; set; } = new List<ProjectionResult>();
 
-    // -----------------------------------------
-    // 2) ML.NET
-    // -----------------------------------------
+    // Trend Visualization
+    private List<MovingAverageData> MovingAverages { get; set; } = new List<MovingAverageData>();
+    private List<StockMLData> TrendMLDataList { get; set; } = new List<StockMLData>();
+
+    // ML.NET
     private MLContext mlContext = new MLContext(seed: 0);
     private bool isTraining = false;
     private bool isPredicting = false;
+    private Dictionary<int, List<(ITransformer Model, string ModelName)>> trainedModelsPerHorizon
+        = new Dictionary<int, List<(ITransformer, string)>>();
+    private bool scatterChartRendered = false;
+    private bool trendChartRendered = false;
 
-    // Updated to store both Model and ModelName
-    private Dictionary<int, List<(ITransformer Model, string ModelName)>> trainedModelsPerHorizon = new Dictionary<int, List<(ITransformer, string)>>();
-
-    // -----------------------------------------
-    // 3) TrainModelAsync
-    // -----------------------------------------
     private async Task TrainModelAsync()
     {
         try
@@ -187,7 +211,6 @@
                 return;
             }
 
-            // Validate forecastHorizon
             if (forecastHorizon < 1 || forecastHorizon > 5)
             {
                 TrainStatus = "Forecast must be between 1 and 5 days.";
@@ -201,9 +224,12 @@
             PatternCounts.Clear();
             ProjectionResults.Clear();
             trainedModelsPerHorizon.Clear();
+            scatterChartRendered = false;
+            trendChartRendered = false;
+
             StateHasChanged();
 
-            // (A) Load CSV => 6 columns: Date,Open,High,Low,Close,Volume
+            // (A) Load CSV
             var dataView = mlContext.Data.LoadFromTextFile<RawStockData>(
                 path: CsvFilePath,
                 hasHeader: true,
@@ -211,58 +237,72 @@
                 allowQuoting: true,
                 allowSparse: false);
 
-            var allRows = mlContext.Data
-                .CreateEnumerable<RawStockData>(dataView, reuseRowObject: false)
-                .ToList();
+            var allRows = mlContext.Data.CreateEnumerable<RawStockData>(dataView, reuseRowObject: false).ToList();
 
             DebugStatus = $"Loaded {allRows.Count} lines from CSV.";
 
-            // (B) Process Data with local variables for out parameters
+            // (B) Process Data 
             int posCount, negCount, longestGain, longestLoss;
             var processedData = ProcessData(allRows, out posCount, out negCount, out longestGain, out longestLoss);
+
+            // Sort the data chronologically
+            processedData = processedData.OrderBy(d => d.Date).ToList();
+
+            DateTime maxDate = processedData.Max(d => d.Date);
+            DateTime cutoffDate = maxDate.AddYears(-LookBackYears);
+            processedData = processedData.Where(d => d.Date >= cutoffDate).ToList();
+
             PositiveCount = posCount;
             NegativeCount = negCount;
             LongestGainStreak = longestGain;
             LongestLossStreak = longestLoss;
-
             DebugStatus += $"\nTotal Gains: {PositiveCount}, Total Losses: {NegativeCount}.";
             DebugStatus += $"\nLongest Gain Streak: {LongestGainStreak}, Longest Loss Streak: {LongestLossStreak}.";
 
             // (C) Analyze Patterns
-            PatternCounts = AnalyzePatterns(processedData, 3); // Analyze patterns up to 3-day streaks
+            PatternCounts = AnalyzePatterns(processedData, 3);
+            foreach (var key in PatternCounts.Keys.ToList())
+            {
+                var pc = PatternCounts[key];
+                int total = pc.GainCount + pc.LossCount;
+                if (total > 0)
+                {
+                    double pValue = BinomialPValue(pc.GainCount, total, 0.5);
+                    pc.IsSignificant = (pValue < 0.05);
+                }
+            }
+
             if (PatternCounts.Any())
             {
                 DebugStatus += $"\nFound {PatternCounts.Count} patterns.";
             }
 
-            // (D) Prepare ML Data with Lag Features
-            // Incorporate Lag Features (previous 1 to 5 days' Close prices)
-            var mlDataList = PrepareMLDataWithLag(processedData, 5); // 5 lag days
+            // Compute 5-day moving averages for visualization.
+            MovingAverages = ComputeMovingAverages(processedData, 5);
 
-            DebugStatus += $"\nPrepared {mlDataList.Count} ML data rows with Lag Features.";
-
-            if (mlDataList.Count == 0)
+            // (D) Prepare ML Data
+            TrendMLDataList = PrepareMLDataWithTrend(processedData, 5);
+            DebugStatus += $"\nPrepared {TrendMLDataList.Count} ML data rows with trend features.";
+            if (TrendMLDataList.Count == 0)
             {
                 TrainStatus = "No ML data rows created. Check your data and forecast horizon.";
                 return;
             }
 
-            // Define pipelines for classification
+            // Define ML.NET pipeline with normalization and missing-value replacement
             var transformPipeline = mlContext.Transforms.Concatenate("Features",
-                    nameof(StockMLData.Open),
-                    nameof(StockMLData.High),
-                    nameof(StockMLData.Low),
                     nameof(StockMLData.Close),
                     nameof(StockMLData.Volume),
-                    nameof(StockMLData.OcPctChange),
-                    nameof(StockMLData.Close_Lag1),
-                    nameof(StockMLData.Close_Lag2),
-                    nameof(StockMLData.Close_Lag3),
-                    nameof(StockMLData.Close_Lag4),
-                    nameof(StockMLData.Close_Lag5))
+                    nameof(StockMLData.Price_MA5),
+                    nameof(StockMLData.Volume_MA5),
+                    nameof(StockMLData.PriceDelta),
+                    nameof(StockMLData.VolumeDelta),
+                    nameof(StockMLData.DailyReturn),
+                    nameof(StockMLData.LogReturn))
+                .Append(mlContext.Transforms.ReplaceMissingValues("Features"))
                 .Append(mlContext.Transforms.NormalizeMinMax("Features"));
 
-            // Define model configurations
+            // Model configurations
             var modelConfigs = new List<ModelConfig>
             {
                 new ModelConfig
@@ -291,19 +331,16 @@
             // Train models for each forecast horizon (1 to 5 days)
             for (int horizon = 1; horizon <= 5; horizon++)
             {
-                // Adjust the forecast horizon
                 forecastHorizon = horizon;
-
-                // Prepare ML Data for current horizon
-                var currentMlDataList = PrepareMLDataWithLag(processedData, 5); // 5 lag days
-
+                // Prepare ML data for the current forecast horizon
+                var currentMlDataList = PrepareMLDataWithTrend(processedData, 5);
                 if (currentMlDataList.Count == 0)
                 {
                     DebugStatus += $"\nNo ML data rows for horizon {horizon} days.";
                     continue;
                 }
 
-                // Time-based split: first 70% for training, last 30% for testing
+                // 70/30 training test split
                 int trainCount = (int)(currentMlDataList.Count * 0.7);
                 var trainRows = currentMlDataList.Take(trainCount).ToList();
                 var testRows = currentMlDataList.Skip(trainCount).ToList();
@@ -311,24 +348,16 @@
                 var trainData = mlContext.Data.LoadFromEnumerable(trainRows);
                 var testData = mlContext.Data.LoadFromEnumerable(testRows);
 
-                // Initialize list for current horizon
                 trainedModelsPerHorizon[horizon] = new List<(ITransformer, string)>();
-
                 foreach (var config in modelConfigs)
                 {
                     var pipeline = transformPipeline.Append(config.Trainer);
-
-                    // Train
                     var model = pipeline.Fit(trainData);
 
-                    // Store model and its name per horizon
                     trainedModelsPerHorizon[horizon].Add((model, config.ModelName));
 
-                    // Evaluate
                     var predictions = model.Transform(testData);
                     var metrics = mlContext.BinaryClassification.Evaluate(predictions, labelColumnName: "Label");
-
-                    // Predict on the last ML data row (for display)
                     var lastMLData = currentMlDataList.Last();
                     var lastPred = await MakePredictionAsync(model, lastMLData, config.ModelName);
 
@@ -343,13 +372,12 @@
                 }
             }
 
-            DebugStatus += $"\nTraining complete. Models evaluated.";
+            DebugStatus += "\nTraining complete. Models evaluated.";
 
             // (E) Projection for 1 to 5 Days Out
-            await ProjectForecastsAsync(processedData, mlDataList);
-
+            await ProjectForecastsAsync(processedData, TrendMLDataList);
             ModelTrained = true;
-            TrainStatus = $"Training complete. Models evaluated with test data.";
+            TrainStatus = "Training complete. Models evaluated with test data.";
         }
         catch (Exception ex)
         {
@@ -363,88 +391,128 @@
         }
     }
 
-    // -----------------------------------------
-    // 4) MakePredictionAsync
-    // -----------------------------------------
-    private async Task<string> MakePredictionAsync(ITransformer model, StockMLData input, string modelName)
+    // Basic binomial test vs. 50%
+    private double BinomialPValue(int x, int n, double p0 = 0.5)
     {
-        try
+        double pVal = 0.0;
+        double pObs = (double)x / n;
+        int lowerBound, upperBound;
+
+        if (pObs < p0)
         {
-            isPredicting = true;
-            StateHasChanged();
-
-            var predEngine = mlContext.Model.CreatePredictionEngine<StockMLData, ChunkPrediction>(model);
-            var prediction = await Task.Run(() => predEngine.Predict(input));
-
-            bool isGain = prediction.PredictedLabel;
-            double probabilityGain = 0.0;
-            double probabilityLoss = 0.0;
-
-            if (modelName.Equals("SdcaLogisticRegression", StringComparison.OrdinalIgnoreCase))
-            {
-                // Apply Sigmoid only for Logistic Regression models
-                probabilityGain = Sigmoid(prediction.Score);
-                probabilityLoss = 1.0 - probabilityGain;
-            }
-            else
-            {
-                // For tree-based models, use the Probability field directly
-                probabilityGain = Math.Clamp(prediction.Probability, 0.0f, 1.0f);
-                probabilityLoss = 1.0 - probabilityGain;
-            }
-
-            // Convert to percentage
-            probabilityGain *= 100.0;
-            probabilityLoss *= 100.0;
-
-            return isGain ? "UP" : "DOWN";
+            lowerBound = 0;
+            upperBound = x;
         }
-        catch (Exception ex)
+        else
         {
-            return $"Prediction failed ({modelName}): {ex.Message}";
+            lowerBound = x;
+            upperBound = n;
         }
-        finally
+
+        for (int k = lowerBound; k <= upperBound; k++)
         {
-            isPredicting = false;
-            StateHasChanged();
+            double prob = BinomialPMF(k, n, p0);
+            pVal += prob;
         }
+
+        pVal *= 2.0;
+
+        if (pVal > 1.0)
+        {
+            pVal = 1.0;
+        }
+
+        return pVal;
     }
 
-    // -----------------------------------------
+    private double BinomialPMF(int k, int n, double p)
+    {
+        double c = (double)Factorial(n) / (Factorial(k) * Factorial(n - k));
+        double pTerm = Math.Pow(p, k) * Math.Pow(1.0 - p, n - k);
+
+        return c * pTerm;
+    }
+
+    private long Factorial(int x)
+    {
+        long f = 1;
+        for (int i = 2; i <= x; i++)
+        {
+            f *= i;
+        }
+
+        return f;
+    }
+
+    // 4A) Prepare ML Data with additional engineered features
+    private List<StockMLData> PrepareMLDataWithTrend(List<StockDataProcessed> data, int windowSize)
+    {
+        var mlDataList = new List<StockMLData>();
+        for (int i = windowSize - 1; i < data.Count; i++)
+        {
+            if (i + forecastHorizon >= data.Count)
+            {
+                continue;
+            }
+
+            var currentDay = data[i];
+            var futureDay = data[i + forecastHorizon];
+            float priceMA = (float)data.Skip(i - windowSize + 1).Take(windowSize).Average(d => d.Close);
+            float volumeMA = (float)data.Skip(i - windowSize + 1).Take(windowSize).Average(d => d.VolumeNumeric);
+            float priceDelta = currentDay.Close - priceMA;
+            float volumeDelta = currentDay.VolumeNumeric - volumeMA;
+            float dailyReturn = (currentDay.Open != 0f) ? (currentDay.Close - currentDay.Open) / currentDay.Open : 0f;
+            float logReturn = (currentDay.Close > 0 && currentDay.Open > 0) ? (float)Math.Log(currentDay.Close / currentDay.Open) : 0f;
+
+            mlDataList.Add(new StockMLData
+                {
+                    Date = currentDay.Date,
+                    Close = currentDay.Close,
+                    Volume = currentDay.VolumeNumeric,
+                    Price_MA5 = priceMA,
+                    Volume_MA5 = volumeMA,
+                    PriceDelta = priceDelta,
+                    VolumeDelta = volumeDelta,
+                    DailyReturn = dailyReturn,
+                    LogReturn = logReturn,
+                    Label = futureDay.IsGain
+                });
+        }
+
+        return mlDataList;
+    }
+
     // 5) Data Analysis Methods
-    // -----------------------------------------
-    private List<StockDataProcessed> ProcessData(List<RawStockData> rawData, out int positiveCount, out int negativeCount, out int longestGainStreak, out int longestLossStreak)
+    private List<StockDataProcessed> ProcessData(List<RawStockData> rawData,
+        out int positiveCount, out int negativeCount,
+        out int longestGainStreak, out int longestLossStreak)
     {
         var processedData = new List<StockDataProcessed>();
+
         positiveCount = 0;
         negativeCount = 0;
         longestGainStreak = 0;
         longestLossStreak = 0;
+
         int currentGainStreak = 0;
         int currentLossStreak = 0;
 
         foreach (var row in rawData)
         {
-            // Parse date with correct format
-            if (!DateTime.TryParseExact(row.Date, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out DateTime parsedDate))
+            if (!DateTime.TryParseExact(row.Date, "yyyy-MM-dd", CultureInfo.InvariantCulture,
+                DateTimeStyles.None, out DateTime parsedDate))
             {
-                // Handle invalid date format
                 DebugStatus += $"\nSkipping row due to invalid date format: {row.Date}";
                 continue;
             }
 
-            // Parse Volume
             if (!float.TryParse(row.Volume, out float volumeNumeric))
             {
-                // Handle invalid volume format
                 DebugStatus += $"\nSkipping row due to invalid volume format: {row.Volume}";
                 continue;
             }
 
-            // Compute % change
             float ocPctChange = (row.Open != 0f) ? ((row.Close - row.Open) / row.Open) * 100f : 0f;
-
-            // Classify as Gain or Loss
             bool isGain = ocPctChange > 0;
             if (isGain)
             {
@@ -452,7 +520,9 @@
                 currentGainStreak++;
                 currentLossStreak = 0;
                 if (currentGainStreak > longestGainStreak)
+                {
                     longestGainStreak = currentGainStreak;
+                }
             }
             else
             {
@@ -460,10 +530,11 @@
                 currentLossStreak++;
                 currentGainStreak = 0;
                 if (currentLossStreak > longestLossStreak)
+                {
                     longestLossStreak = currentLossStreak;
+                }
             }
 
-            // Add to processed data
             processedData.Add(new StockDataProcessed
                 {
                     Date = parsedDate,
@@ -478,70 +549,411 @@
         }
 
         DebugStatus += $"\nSuccessfully processed {processedData.Count} out of {rawData.Count} rows.";
-
         return processedData;
     }
 
-    private List<StockMLData> PrepareMLDataWithLag(List<StockDataProcessed> data, int maxLag)
+    private List<MovingAverageData> ComputeMovingAverages(List<StockDataProcessed> data, int windowSize)
     {
-        var mlDataList = new List<StockMLData>();
-
-        for (int i = maxLag; i < data.Count; i++)
+        var maData = new List<MovingAverageData>();
+        if (data.Count < windowSize)
         {
-            // Ensure there are enough future days based on forecastHorizon
-            if (i + forecastHorizon >= data.Count)
-                continue;
+            return maData;
+        }
 
-            var currentDay = data[i];
-            var futureDay = data[i + forecastHorizon];
-
-            // Collect lag features
-            var lag1 = data[i - 1].Close;
-            var lag2 = data[i - 2].Close;
-            var lag3 = data[i - 3].Close;
-            var lag4 = data[i - 4].Close;
-            var lag5 = data[i - 5].Close;
-
-            mlDataList.Add(new StockMLData
+        for (int i = windowSize - 1; i < data.Count; i++)
+        {
+            double priceAvg = data.Skip(i - windowSize + 1).Take(windowSize).Average(d => d.Close);
+            double volumeAvg = data.Skip(i - windowSize + 1).Take(windowSize).Average(d => d.VolumeNumeric);
+            maData.Add(new MovingAverageData
                 {
-                    Open = currentDay.Open,
-                    High = currentDay.High,
-                    Low = currentDay.Low,
-                    Close = currentDay.Close,
-                    Volume = currentDay.VolumeNumeric,
-                    OcPctChange = currentDay.OcPctChange,
-                    Close_Lag1 = lag1,
-                    Close_Lag2 = lag2,
-                    Close_Lag3 = lag3,
-                    Close_Lag4 = lag4,
-                    Close_Lag5 = lag5,
-                    Label = futureDay.IsGain
+                    Date = data[i].Date,
+                    PriceMovingAverage = priceAvg,
+                    VolumeMovingAverage = volumeAvg
                 });
         }
 
-        return mlDataList;
+        return maData;
     }
 
+    // 6) Projection Methods
+    private async Task ProjectForecastsAsync(List<StockDataProcessed> data, List<StockMLData> mlDataList)
+    {
+        ProjectionResults.Clear();
+        for (int daysOut = 1; daysOut <= 5; daysOut++)
+        {
+            if (!trainedModelsPerHorizon.ContainsKey(daysOut))
+            {
+                DebugStatus += $"\nNo trained models found for {daysOut} days out.";
+                continue;
+            }
+
+            foreach (var (model, modelName) in trainedModelsPerHorizon[daysOut])
+            {
+                var lastMLData = mlDataList.Last();
+                var predEngine = mlContext.Model.CreatePredictionEngine<StockMLData, ChunkPrediction>(model);
+                var prediction = await Task.Run(() => predEngine.Predict(lastMLData));
+                bool isGain = prediction.PredictedLabel;
+                double probabilityGain = modelName.Equals("SdcaLogisticRegression", StringComparison.OrdinalIgnoreCase)
+                    ? Sigmoid(prediction.Score)
+                    : Math.Clamp(prediction.Probability, 0.0f, 1.0f);
+                double probabilityLoss = 1.0 - probabilityGain;
+                probabilityGain *= 100.0;
+                probabilityLoss *= 100.0;
+                ProjectionResults.Add(new ProjectionResult
+                    {
+                        ForecastDays = daysOut,
+                        ModelName = modelName,
+                        Prediction = isGain ? "UP" : "DOWN",
+                        ProbabilityGain = probabilityGain,
+                        ProbabilityLoss = probabilityLoss
+                    });
+            }
+        }
+    }
+
+    // 7) MakePredictionAsync
+    private async Task<string> MakePredictionAsync(ITransformer model, StockMLData input, string modelName)
+    {
+        try
+        {
+            isPredicting = true;
+            StateHasChanged();
+            var predEngine = mlContext.Model.CreatePredictionEngine<StockMLData, ChunkPrediction>(model);
+            var prediction = await Task.Run(() => predEngine.Predict(input));
+            bool isGain = prediction.PredictedLabel;
+            double probabilityGain = modelName.Equals("SdcaLogisticRegression", StringComparison.OrdinalIgnoreCase)
+                ? Sigmoid(prediction.Score)
+                : Math.Clamp(prediction.Probability, 0.0f, 1.0f);
+            double probabilityLoss = 1.0 - probabilityGain;
+            probabilityGain *= 100.0;
+            probabilityLoss *= 100.0;
+            return isGain ? "UP" : "DOWN";
+        }
+        catch (Exception ex)
+        {
+            return $"Prediction failed ({modelName}): {ex.Message}";
+        }
+        finally
+        {
+            isPredicting = false;
+            StateHasChanged();
+        }
+    }
+
+    // 8) Sigmoid
+    private double Sigmoid(float score)
+    {
+        return 1.0 / (1.0 + Math.Exp(-score));
+    }
+
+    // 9) Chart Rendering Methods
+    private async Task RenderChartAsync()
+    {
+        if (ModelResults == null || !ModelResults.Any())
+        {
+            return;
+        }
+
+        // Define a mapping from model names to colors.
+        var modelColors = new Dictionary<string, string>
+        {
+            { "FastTree", "rgba(255, 99, 132, 1)" },             // Red-ish
+            { "LightGbm", "rgba(54, 162, 235, 1)" },              // Blue-ish
+            { "SdcaLogisticRegression", "rgba(75, 192, 192, 1)" } // Teal (default)
+        };
+
+        var grouped = ModelResults.GroupBy(r => r.ModelName)
+            .Select(g => new
+            {
+                label = g.Key,
+                // Using F1 Score for chart data
+                data = g.Select(r => new { x = r.ForecastHorizon, y = r.F1Score * 100.0 }).ToList(),
+                // Assign a color based on the model name, falling back to teal if not found.
+                backgroundColor = modelColors.ContainsKey(g.Key) ? modelColors[g.Key] : "rgba(75, 192, 192, 1)"
+            })
+            .ToList();
+
+        await JS.InvokeVoidAsync("drawScatterChart", grouped);
+    }
+
+    // For horizon=1 signals
+    private List<TrendSignal> GetTrendSignals(List<StockMLData> mlData)
+    {
+        var signals = new List<TrendSignal>();
+        if (!trainedModelsPerHorizon.ContainsKey(1) || !mlData.Any())
+        {
+            return signals;
+        }
+
+        var (model, modelName) = trainedModelsPerHorizon[1].First();
+        var predEngine = mlContext.Model.CreatePredictionEngine<StockMLData, ChunkPrediction>(model);
+
+        foreach (var item in mlData)
+        {
+            var prediction = predEngine.Predict(item);
+            signals.Add(new TrendSignal
+                {
+                    Date = item.Date,
+                    Close = item.Close,
+                    Prediction = prediction.PredictedLabel ? "UP" : "DOWN",
+                    Probability = prediction.PredictedLabel
+                        ? prediction.Probability * 100.0
+                        : (1 - prediction.Probability) * 100.0
+                });
+        }
+
+        return signals;
+    }
+
+    private async Task RenderTrendChartAsync()
+    {
+        if (TrendMLDataList == null || !TrendMLDataList.Any() || MovingAverages == null || !MovingAverages.Any())
+        {
+            return;
+        }
+
+        var maxDate = TrendMLDataList.Max(x => x.Date);
+        var cutoffDate = maxDate.AddDays(-365);
+        var filteredMLData = TrendMLDataList.Where(x => x.Date >= cutoffDate).OrderBy(x => x.Date).ToList();
+        var filteredMA = MovingAverages.Where(ma => ma.Date >= cutoffDate).OrderBy(ma => ma.Date).ToList();
+
+        if (!filteredMLData.Any() || !filteredMA.Any())
+        {
+            return;
+        }
+
+        var labels = filteredMA.Select(ma => ma.Date.ToString("yyyy-MM-dd")).ToList();
+        var priceMADataset = new
+        {
+            label = "Price 5-Day MA",
+            data = filteredMA.Select(ma => ma.PriceMovingAverage).ToList(),
+            fill = false,
+            borderColor = "blue",
+            tension = 0.1
+        };
+
+        var actualCloseDataset = new
+        {
+            label = "Actual Close",
+            data = filteredMLData.Select(x => x.Close).ToList(),
+            fill = false,
+            borderColor = "red",
+            tension = 0.1
+        };
+
+        var signals = GetTrendSignals(filteredMLData);
+        var upSignals = signals.Where(s => s.Prediction == "UP")
+                               .Select(s => new { x = s.Date.ToString("yyyy-MM-dd"), y = s.Close })
+                               .ToList();
+        var downSignals = signals.Where(s => s.Prediction == "DOWN")
+                                 .Select(s => new { x = s.Date.ToString("yyyy-MM-dd"), y = s.Close })
+                                 .ToList();
+
+        var upDataset = new
+        {
+            label = "ML Trend UP",
+            data = upSignals,
+            pointStyle = "triangle",
+            backgroundColor = "green",
+            showLine = false,
+            radius = 8
+        };
+
+        var downDataset = new
+        {
+            label = "ML Trend DOWN",
+            data = downSignals,
+            pointStyle = "rect",
+            backgroundColor = "orange",
+            showLine = false,
+            radius = 8
+        };
+
+        await JS.InvokeVoidAsync("drawLineChart",
+            new object[]
+            {
+                new object[]
+                {
+                    priceMADataset,
+                    actualCloseDataset,
+                    upDataset,
+                    downDataset
+                },
+                labels
+            }
+        );
+    }
+
+    // 10) OnAfterRender
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (ModelTrained)
+        {
+            if (!scatterChartRendered)
+            {
+                await RenderChartAsync();
+                scatterChartRendered = true;
+            }
+
+            if (!trendChartRendered)
+            {
+                await RenderTrendChartAsync();
+                trendChartRendered = true;
+            }
+
+            await RenderPatternAnalysisChartAsync();
+        }
+    }
+
+    // Renders a bar chart for pattern analysis
+    private async Task RenderPatternAnalysisChartAsync()
+    {
+        if (PatternCounts == null || !PatternCounts.Any())
+        {
+            return;
+        }
+
+        var labels = PatternCounts.Keys.OrderBy(k => k).ToList();
+        var gainPercents = labels.Select(k => PatternCounts[k].GainPercentage).ToList();
+
+        var chartData = new
+        {
+            labels,
+            datasets = new[]
+            {
+                new {
+                    label = "Chance of Next-Day Gain (%)",
+                    data = gainPercents,
+                    backgroundColor = "#007bff"
+                }
+            }
+        };
+
+        await JS.InvokeVoidAsync("drawBarChart", "patternBarChart", chartData);
+    }
+
+    // 11) Dispose
+    public void Dispose()
+    {
+    }
+
+    // 12) Data Models
+    class RawStockData
+    {
+        [LoadColumn(0)] public string Date { get; set; } = "";
+        [LoadColumn(1)] public float Open { get; set; }
+        [LoadColumn(2)] public float High { get; set; }
+        [LoadColumn(3)] public float Low { get; set; }
+        [LoadColumn(4)] public float Close { get; set; }
+        [LoadColumn(5)] public string Volume { get; set; } = "";
+    }
+
+    class StockDataProcessed
+    {
+        public DateTime Date { get; set; }
+        public float Open { get; set; }
+        public float High { get; set; }
+        public float Low { get; set; }
+        public float Close { get; set; }
+        public float VolumeNumeric { get; set; }
+        public float OcPctChange { get; set; }
+        public bool IsGain { get; set; }
+    }
+
+    class StockMLData
+    {
+        public DateTime Date { get; set; }
+        public float Close { get; set; }
+        public float Volume { get; set; }
+        public float Price_MA5 { get; set; }
+        public float Volume_MA5 { get; set; }
+        public float PriceDelta { get; set; }
+        public float VolumeDelta { get; set; }
+        public float DailyReturn { get; set; }
+        public float LogReturn { get; set; }
+        public bool Label { get; set; }
+    }
+
+    class ChunkPrediction
+    {
+        [ColumnName("PredictedLabel")]
+        public bool PredictedLabel { get; set; }
+        [ColumnName("Probability")]
+        public float Probability { get; set; }
+        [ColumnName("Score")]
+        public float Score { get; set; }
+    }
+
+    class ModelResult
+    {
+        public string ModelName { get; set; } = "";
+        public int ForecastHorizon { get; set; } = 0;
+        public double Accuracy { get; set; }
+        public double F1Score { get; set; }
+        public string Prediction { get; set; } = "";
+    }
+
+    class PatternCount
+    {
+        public int GainCount { get; set; } = 0;
+        public int LossCount { get; set; } = 0;
+        public double GainPercentage { get; set; } = 0.0;
+        public double LossPercentage { get; set; } = 0.0;
+        public bool IsSignificant { get; set; } = false;
+    }
+
+    class ProjectionResult
+    {
+        public int ForecastDays { get; set; }
+        public string ModelName { get; set; } = "";
+        public string Prediction { get; set; } = "";
+        public double ProbabilityGain { get; set; }
+        public double ProbabilityLoss { get; set; }
+    }
+
+    class ModelConfig
+    {
+        public string ModelName { get; set; } = "";
+        public IEstimator<ITransformer> Trainer { get; set; } = null!;
+    }
+
+    class MovingAverageData
+    {
+        public DateTime Date { get; set; }
+        public double PriceMovingAverage { get; set; }
+        public double VolumeMovingAverage { get; set; }
+    }
+
+    class TrendSignal
+    {
+        public DateTime Date { get; set; }
+        public string Prediction { get; set; } = "";
+        public double Probability { get; set; }
+        public float Close { get; set; }
+    }
+
+    // 13) AnalyzePatterns
     private Dictionary<string, PatternCount> AnalyzePatterns(List<StockDataProcessed> data, int maxStreak)
     {
         var patternCounts = new Dictionary<string, PatternCount>();
-
         for (int i = 0; i < data.Count; i++)
         {
             for (int streak = 1; streak <= maxStreak; streak++)
             {
                 if (i - streak < 0)
+                {
                     continue;
+                }
 
                 bool allGains = true;
                 bool allLosses = true;
-
                 for (int j = 0; j < streak; j++)
                 {
                     if (!data[i - j - 1].IsGain)
                     {
                         allGains = false;
                     }
+
                     if (data[i - j - 1].IsGain)
                     {
                         allLosses = false;
@@ -559,7 +971,7 @@
                 }
                 else
                 {
-                    continue; // Not a pure gain or loss streak
+                    continue;
                 }
 
                 if (!patternCounts.ContainsKey(patternKey))
@@ -577,8 +989,6 @@
                 }
             }
         }
-
-        // Calculate percentages
         foreach (var key in patternCounts.Keys.ToList())
         {
             var count = patternCounts[key];
@@ -596,172 +1006,5 @@
         }
 
         return patternCounts;
-    }
-
-    // -----------------------------------------
-    // 6) Projection Methods
-    // -----------------------------------------
-    private async Task ProjectForecastsAsync(List<StockDataProcessed> data, List<StockMLData> mlDataList)
-    {
-        ProjectionResults.Clear(); // Clear previous projections
-
-        // Project for 1 to 5 days out
-        for (int daysOut = 1; daysOut <= 5; daysOut++)
-        {
-            // Ensure there are trained models for the current daysOut
-            if (!trainedModelsPerHorizon.ContainsKey(daysOut))
-            {
-                DebugStatus += $"\nNo trained models found for {daysOut} days out.";
-                continue;
-            }
-
-            foreach (var (model, modelName) in trainedModelsPerHorizon[daysOut])
-            {
-                // Prepare the last data point for prediction
-                var lastMLData = mlDataList.Last();
-
-                // Make prediction
-                var predEngine = mlContext.Model.CreatePredictionEngine<StockMLData, ChunkPrediction>(model);
-                var prediction = await Task.Run(() => predEngine.Predict(lastMLData));
-
-                bool isGain = prediction.PredictedLabel;
-                double probabilityGain = 0.0;
-                double probabilityLoss = 0.0;
-
-                if (modelName.Equals("SdcaLogisticRegression", StringComparison.OrdinalIgnoreCase))
-                {
-                    // Apply Sigmoid only for Logistic Regression models
-                    probabilityGain = Sigmoid(prediction.Score);
-                    probabilityLoss = 1.0 - probabilityGain;
-                }
-                else
-                {
-                    // For tree-based models, use the Probability field directly
-                    probabilityGain = Math.Clamp(prediction.Probability, 0.0f, 1.0f);
-                    probabilityLoss = 1.0 - probabilityGain;
-                }
-
-                // Convert to percentage
-                probabilityGain *= 100.0;
-                probabilityLoss *= 100.0;
-
-                ProjectionResults.Add(new ProjectionResult
-                    {
-                        ForecastDays = daysOut,
-                        ModelName = modelName,
-                        Prediction = isGain ? "UP" : "DOWN",
-                        ProbabilityGain = probabilityGain,
-                        ProbabilityLoss = probabilityLoss
-                    });
-            }
-        }
-    }
-
-    // Sigmoid function to convert Score to probability
-    private double Sigmoid(float score)
-    {
-        return 1.0 / (1.0 + Math.Exp(-score));
-    }
-
-    // -----------------------------------------
-    // 7) Data Models
-    // -----------------------------------------
-    // Raw data model matching the CSV structure
-    class RawStockData
-    {
-        [LoadColumn(0)] public string Date { get; set; } = "";
-        [LoadColumn(1)] public float Open { get; set; }
-        [LoadColumn(2)] public float High { get; set; }
-        [LoadColumn(3)] public float Low { get; set; }
-        [LoadColumn(4)] public float Close { get; set; }
-        [LoadColumn(5)] public string Volume { get; set; } = "";
-    }
-
-    // Processed data model for analysis
-    class StockDataProcessed
-    {
-        public DateTime Date { get; set; }
-        public float Open { get; set; }
-        public float High { get; set; }
-        public float Low { get; set; }
-        public float Close { get; set; }
-        public float VolumeNumeric { get; set; }
-        public float OcPctChange { get; set; } // Open to Close % Change
-        public bool IsGain { get; set; }        // True if Gain, False if Loss
-    }
-
-    // ML data model for training
-    class StockMLData
-    {
-        public float Open { get; set; }
-        public float High { get; set; }
-        public float Low { get; set; }
-        public float Close { get; set; }
-        public float Volume { get; set; }
-        public float OcPctChange { get; set; }
-        public float Close_Lag1 { get; set; } // Previous day's Close
-        public float Close_Lag2 { get; set; } // 2 days ago Close
-        public float Close_Lag3 { get; set; } // 3 days ago Close
-        public float Close_Lag4 { get; set; } // 4 days ago Close
-        public float Close_Lag5 { get; set; } // 5 days ago Close
-        public bool Label { get; set; }
-    }
-
-    // Prediction result model
-    class ChunkPrediction
-    {
-        [ColumnName("PredictedLabel")]
-        public bool PredictedLabel { get; set; }
-
-        [ColumnName("Probability")]
-        public float Probability { get; set; } // Represents the probability of the positive class
-
-        [ColumnName("Score")]
-        public float Score { get; set; } // Represents the raw score (logit for logistic regression)
-    }
-
-    // Model evaluation result
-    class ModelResult
-    {
-        public string ModelName { get; set; } = "";
-        public int ForecastHorizon { get; set; } = 0; // New Property
-        public double Accuracy { get; set; }
-        public double F1Score { get; set; }
-        public string Prediction { get; set; } = "";
-    }
-
-    // Pattern Count Model for Gain and Loss
-    class PatternCount
-    {
-        public int GainCount { get; set; } = 0;
-        public int LossCount { get; set; } = 0;
-        public double GainPercentage { get; set; } = 0.0;
-        public double LossPercentage { get; set; } = 0.0;
-    }
-
-    // Projection Result Model
-    class ProjectionResult
-    {
-        public int ForecastDays { get; set; }
-        public string ModelName { get; set; } = "";
-        public string Prediction { get; set; } = "";
-        public double ProbabilityGain { get; set; }
-        public double ProbabilityLoss { get; set; }
-    }
-
-    // Model configuration
-    class ModelConfig
-    {
-        public string ModelName { get; set; } = "";
-        public IEstimator<ITransformer> Trainer { get; set; } = null!;
-    }
-
-    // -----------------------------------------
-    // 8) Dispose Method
-    // -----------------------------------------
-    public void Dispose()
-    {
-        // Implement any necessary cleanup here.
-        // For this component, there may not be unmanaged resources to clean up.
     }
 }

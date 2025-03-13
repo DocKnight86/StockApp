@@ -1,8 +1,8 @@
 {
   "version": 2,
-  "dgSpecHash": "jGVXFqaE3yg=",
+  "dgSpecHash": "7gH4i2+A16s=",
   "success": true,
-  "projectFilePath": "C:\\Users\\knigh\\OneDrive\\Desktop\\StockApp\\StockApp.csproj",
+  "projectFilePath": "C:\\Users\\knigh\\OneDrive\\Desktop\\StockApp2\\StockApp.csproj",
   "expectedPackageFiles": [
     "C:\\Users\\knigh\\.nuget\\packages\\google.protobuf\\3.27.1\\google.protobuf.3.27.1.nupkg.sha512",
     "C:\\Users\\knigh\\.nuget\\packages\\lightgbm\\3.3.5\\lightgbm.3.3.5.nupkg.sha512",

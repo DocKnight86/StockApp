@@ -411,6 +411,88 @@
           "Value": "sha256-4mWsDy3aHl36ZbGt8zByK7Pvd4kRUoNgTYzRnwmPHwg="
         }
       ]
+    },
+    {
+      "Route": "js/chartInterop.88d8fxiw4z.js",
+      "AssetFile": "js/chartInterop.js",
+      "Selectors": [],
+      "ResponseHeaders": [
+        {
+          "Name": "Accept-Ranges",
+          "Value": "bytes"
+        },
+        {
+          "Name": "Cache-Control",
+          "Value": "max-age=31536000, immutable"
+        },
+        {
+          "Name": "Content-Length",
+          "Value": "2270"
+        },
+        {
+          "Name": "Content-Type",
+          "Value": "text/javascript"
+        },
+        {
+          "Name": "ETag",
+          "Value": "\"CFjzWRDVxpDRANKt9QCJEwzffZCQkGZZjmSX6w+EGMA=\""
+        },
+        {
+          "Name": "Last-Modified",
+          "Value": "Thu, 13 Mar 2025 18:38:40 GMT"
+        }
+      ],
+      "EndpointProperties": [
+        {
+          "Name": "fingerprint",
+          "Value": "88d8fxiw4z"
+        },
+        {
+          "Name": "integrity",
+          "Value": "sha256-CFjzWRDVxpDRANKt9QCJEwzffZCQkGZZjmSX6w+EGMA="
+        },
+        {
+          "Name": "label",
+          "Value": "js/chartInterop.js"
+        }
+      ]
+    },
+    {
+      "Route": "js/chartInterop.js",
+      "AssetFile": "js/chartInterop.js",
+      "Selectors": [],
+      "ResponseHeaders": [
+        {
+          "Name": "Accept-Ranges",
+          "Value": "bytes"
+        },
+        {
+          "Name": "Cache-Control",
+          "Value": "no-cache"
+        },
+        {
+          "Name": "Content-Length",
+          "Value": "2270"
+        },
+        {
+          "Name": "Content-Type",
+          "Value": "text/javascript"
+        },
+        {
+          "Name": "ETag",
+          "Value": "\"CFjzWRDVxpDRANKt9QCJEwzffZCQkGZZjmSX6w+EGMA=\""
+        },
+        {
+          "Name": "Last-Modified",
+          "Value": "Thu, 13 Mar 2025 18:38:40 GMT"
+        }
+      ],
+      "EndpointProperties": [
+        {
+          "Name": "integrity",
+          "Value": "sha256-CFjzWRDVxpDRANKt9QCJEwzffZCQkGZZjmSX6w+EGMA="
+        }
+      ]
     }
   ]
 }
