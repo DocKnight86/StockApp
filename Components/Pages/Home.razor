@@ -1,0 +1,478 @@
+﻿@rendermode InteractiveServer
+@page "/"
+@using System.Text.Json
+@using System.Text.Json.Serialization
+@inject HttpClient Http
+@using System.IO
+@using System.Text
+
+<h3>Dan's Stock Data</h3>
+
+<!-- SYMBOL INPUT -->
+<div class="mb-3">
+    <label for="stockSymbol" class="form-label">Symbol:</label>
+    <input id="stockSymbol" class="form-control" @bind="StockSymbol" />
+</div>
+
+<!-- FUNCTION SELECTION -->
+<div class="mb-3">
+    <label for="functionSelection" class="form-label">Select Data Type:</label>
+    <select id="functionSelection" class="form-select" @bind="SelectedFunction">
+        <option value="GLOBAL_QUOTE">Global Quote</option>
+        <option value="TIME_SERIES_INTRADAY">Intraday (1-Day)</option>
+        <option value="TIME_SERIES_DAILY">Daily</option>
+        <option value="TIME_SERIES_WEEKLY">Weekly</option>
+        <option value="TIME_SERIES_MONTHLY">Monthly</option>
+        <option value="OVERVIEW">Company Overview</option>
+    </select>
+</div>
+
+<!-- OUTPUT SIZE SELECTION (only for DAILY time series) -->
+@if (SelectedFunction == "TIME_SERIES_DAILY")
+{
+    <div class="mb-3">
+        <label for="outputSizeSelection" class="form-label">Output Size:</label>
+        <select id="outputSizeSelection" class="form-select" @bind="OutputSize">
+            <option value="compact">Compact (Latest 100)</option>
+            <option value="full">Full (20 Years)</option>
+        </select>
+    </div>
+}
+
+<!-- INTRADAY INTERVAL (only used if TIME_SERIES_INTRADAY is selected) -->
+@if (SelectedFunction == "TIME_SERIES_INTRADAY")
+{
+    <div class="mb-3">
+        <label for="intervalSelection" class="form-label">Intraday Interval:</label>
+        <select id="intervalSelection" class="form-select" @bind="IntradayInterval">
+            <option value="1min">1 Minute</option>
+            <option value="5min">5 Minutes</option>
+            <option value="15min">15 Minutes</option>
+            <option value="30min">30 Minutes</option>
+            <option value="60min">1 Hour</option>
+        </select>
+    </div>
+}
+
+<!-- GET DATA BUTTON -->
+<button class="btn btn-primary" @onclick="GetDataAsync">Get Data</button>
+
+<!-- ERROR MESSAGE -->
+@if (!string.IsNullOrEmpty(ErrorMessage))
+{
+    <div class="alert alert-danger mt-3">
+        @ErrorMessage
+    </div>
+}
+
+<!-- GLOBAL QUOTE RESULTS -->
+@if (GlobalQuoteData != null && SelectedFunction == "GLOBAL_QUOTE")
+{
+    <h4 class="mt-3">Global Quote</h4>
+    <p><strong>Symbol:</strong> @GlobalQuoteData.GlobalQuote.Symbol</p>
+    <p><strong>Price:</strong> @GlobalQuoteData.GlobalQuote.Price</p>
+    <p><strong>Change:</strong> @GlobalQuoteData.GlobalQuote.Change</p>
+}
+
+<!-- TIME SERIES RESULTS -->
+@if (TimeSeriesData != null &&
+  (SelectedFunction == "TIME_SERIES_INTRADAY"
+    || SelectedFunction == "TIME_SERIES_DAILY"
+    || SelectedFunction == "TIME_SERIES_WEEKLY"
+    || SelectedFunction == "TIME_SERIES_MONTHLY"))
+{
+    <h4 class="mt-3">@SelectedFunction Results</h4>
+    <p>Symbol: @TimeSeriesData.MetaData.Symbol</p>
+    <p>Last Refreshed: @TimeSeriesData.MetaData.LastRefreshed</p>
+
+    <!-- Save CSV Buttons -->
+    @if (SelectedFunction == "TIME_SERIES_WEEKLY"
+       && TimeSeriesData?.TimeSeries != null
+       && TimeSeriesData.TimeSeries.Count > 0)
+    {
+        <button class="btn btn-success me-2" @onclick="SaveWeeklyDataCsvAsync">
+            Save Weekly Data to CSV (for ML.NET)
+        </button>
+    }
+
+    @if (SelectedFunction == "TIME_SERIES_DAILY"
+       && TimeSeriesData?.TimeSeries != null
+       && TimeSeriesData.TimeSeries.Count > 0)
+    {
+        <button class="btn btn-success" @onclick="SaveDailyDataCsvAsync">
+            Save Daily Data to CSV (for ML.NET)
+        </button>
+    }
+
+    <table class="table table-striped table-hover mt-3">
+        <thead>
+            <tr>
+                <th>Date/Time</th>
+                <th>Open</th>
+                <th>High</th>
+                <th>Low</th>
+                <th>Close</th>
+                <th>Volume</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var kvp in TimeSeriesData.TimeSeries)
+            {
+                var dateKey = kvp.Key; // e.g. "2025-01-14"
+                var ohlc = kvp.Value;
+                <tr>
+                    <td>@dateKey</td>
+                    <td>@ohlc.Open</td>
+                    <td>@ohlc.High</td>
+                    <td>@ohlc.Low</td>
+                    <td>@ohlc.Close</td>
+                    <td>@ohlc.Volume</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+<!-- COMPANY OVERVIEW RESULTS -->
+@if (CompanyOverviewData != null && SelectedFunction == "OVERVIEW")
+{
+    <h4 class="mt-3">Company Overview</h4>
+    <p><strong>Symbol:</strong> @CompanyOverviewData.Symbol</p>
+    <p><strong>Name:</strong> @CompanyOverviewData.Name</p>
+    <p><strong>Market Cap:</strong> @CompanyOverviewData.MarketCapitalization</p>
+    <p><strong>EPS (TTM):</strong> @CompanyOverviewData.EPS</p>
+    <p><strong>PE Ratio:</strong> @CompanyOverviewData.PERatio</p>
+    <p><strong>Description:</strong> @CompanyOverviewData.Description</p>
+    <p><strong>Sector:</strong> @CompanyOverviewData.Sector</p>
+    <p><strong>Industry:</strong> @CompanyOverviewData.Industry</p>
+    <!-- Display as many fundamentals as you like -->
+}
+
+@code {
+    private string StockSymbol { get; set; } = "IBM";
+    private string SelectedFunction { get; set; } = "GLOBAL_QUOTE";
+    private string IntradayInterval { get; set; } = "5min";
+    private string OutputSize { get; set; } = "compact"; // Added for Daily data
+    private string? ErrorMessage { get; set; }
+
+    // Data containers
+    private AvGlobalQuoteResponse? GlobalQuoteData { get; set; }
+    private AvTimeSeriesResponse? TimeSeriesData { get; set; }
+    private AvCompanyOverviewResponse? CompanyOverviewData { get; set; }
+
+    // Replace with your actual API key
+    private const string AlphaVantageApiKey = "4WMT7UGF4T6GQIB3";
+
+    private async Task GetDataAsync()
+    {
+        try
+        {
+            ErrorMessage = null;
+            GlobalQuoteData = null;
+            TimeSeriesData = null;
+            CompanyOverviewData = null;
+
+            if (string.IsNullOrWhiteSpace(StockSymbol))
+            {
+                ErrorMessage = "Please enter a valid stock symbol.";
+                return;
+            }
+
+            // Construct the Alpha Vantage URL
+            var url = BuildAlphaVantageUrl();
+
+            var response = await Http.GetAsync(url);
+            if (!response.IsSuccessStatusCode)
+            {
+                ErrorMessage = $"Error retrieving data: {response.ReasonPhrase}";
+                return;
+            }
+
+            var json = await response.Content.ReadAsStringAsync();
+
+            // Deserialize by function
+            switch (SelectedFunction)
+            {
+                case "GLOBAL_QUOTE":
+                    GlobalQuoteData = JsonSerializer.Deserialize<AvGlobalQuoteResponse>(json);
+                    if (GlobalQuoteData?.GlobalQuote == null)
+                    {
+                        ErrorMessage = "No global quote data found.";
+                    }
+                    break;
+                case "TIME_SERIES_INTRADAY":
+                case "TIME_SERIES_DAILY":
+                case "TIME_SERIES_WEEKLY":
+                case "TIME_SERIES_MONTHLY":
+                    TimeSeriesData = DeserializeTimeSeries(json, SelectedFunction);
+                    if (TimeSeriesData?.TimeSeries == null
+                        || TimeSeriesData.TimeSeries.Count == 0)
+                    {
+                        ErrorMessage = "No time series data found.";
+                    }
+                    break;
+                case "OVERVIEW":
+                    CompanyOverviewData = JsonSerializer.Deserialize<AvCompanyOverviewResponse>(json);
+                    if (CompanyOverviewData == null
+                        || string.IsNullOrEmpty(CompanyOverviewData.Symbol))
+                    {
+                        ErrorMessage = "No company overview data found.";
+                    }
+                    break;
+            }
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = $"An error occurred: {ex.Message}";
+        }
+    }
+
+    /// <summary>
+    /// Builds the appropriate Alpha Vantage URL based on user selection.
+    /// </summary>
+    private string BuildAlphaVantageUrl()
+    {
+        var baseUrl = "https://www.alphavantage.co/query";
+        var symbolParam = $"symbol={StockSymbol}";
+        var apiKeyParam = $"apikey={AlphaVantageApiKey}";
+
+        return SelectedFunction switch
+        {
+            "GLOBAL_QUOTE" =>
+                $"{baseUrl}?function=GLOBAL_QUOTE&{symbolParam}&{apiKeyParam}",
+            "TIME_SERIES_INTRADAY" =>
+                $"{baseUrl}?function=TIME_SERIES_INTRADAY&interval={IntradayInterval}&{symbolParam}&outputsize=compact&{apiKeyParam}",
+            "TIME_SERIES_DAILY" =>
+                $"{baseUrl}?function=TIME_SERIES_DAILY&{symbolParam}&outputsize={OutputSize}&{apiKeyParam}", // Updated
+            "TIME_SERIES_WEEKLY" =>
+                $"{baseUrl}?function=TIME_SERIES_WEEKLY&{symbolParam}&{apiKeyParam}",
+            "TIME_SERIES_MONTHLY" =>
+                $"{baseUrl}?function=TIME_SERIES_MONTHLY&{symbolParam}&{apiKeyParam}",
+            "OVERVIEW" =>
+                $"{baseUrl}?function=OVERVIEW&{symbolParam}&{apiKeyParam}",
+            _ =>
+                $"{baseUrl}?function=GLOBAL_QUOTE&{symbolParam}&{apiKeyParam}"
+        };
+    }
+
+    /// <summary>
+    /// Deserializes the time series JSON. Replaces the original "Time Series (...)"
+    /// key with a simpler "TimeSeries" property name for uniform parsing.
+    /// </summary>
+    private AvTimeSeriesResponse DeserializeTimeSeries(string json, string function)
+    {
+        string normalizedJson = json;
+
+        if (function == "TIME_SERIES_INTRADAY")
+        {
+            var intervals = new[] { "1min", "5min", "15min", "30min", "60min" };
+            foreach (var interval in intervals)
+            {
+                var pattern = $"\"Time Series ({interval})\"";
+                if (normalizedJson.Contains(pattern))
+                {
+                    normalizedJson = normalizedJson.Replace(pattern, "\"TimeSeries\"");
+                    break;
+                }
+            }
+        }
+        else if (function == "TIME_SERIES_DAILY")
+        {
+            normalizedJson =
+                normalizedJson.Replace("\"Time Series (Daily)\"", "\"TimeSeries\"");
+        }
+        else if (function == "TIME_SERIES_WEEKLY")
+        {
+            normalizedJson =
+                normalizedJson.Replace("\"Weekly Time Series\"", "\"TimeSeries\"");
+        }
+        else if (function == "TIME_SERIES_MONTHLY")
+        {
+            normalizedJson =
+                normalizedJson.Replace("\"Monthly Time Series\"", "\"TimeSeries\"");
+        }
+
+        return JsonSerializer.Deserialize<AvTimeSeriesResponse>(normalizedJson)
+               ?? new AvTimeSeriesResponse();
+    }
+
+    /// <summary>
+    /// Saves weekly time-series data to a CSV file so you can use it in ML.NET.
+    /// </summary>
+    private async Task SaveWeeklyDataCsvAsync()
+    {
+        await SaveTimeSeriesCsvAsync("Weekly");
+    }
+
+    /// <summary>
+    /// Saves daily time-series data to a CSV file so you can use it in ML.NET.
+    /// </summary>
+    private async Task SaveDailyDataCsvAsync()
+    {
+        await SaveTimeSeriesCsvAsync("Daily");
+    }
+
+    /// <summary>
+    /// Generic method to save time series data to a CSV file based on the function type.
+    /// </summary>
+    /// <param name="type">The type of time series data (e.g., "Daily", "Weekly").</param>
+    private async Task SaveTimeSeriesCsvAsync(string type)
+    {
+        try
+        {
+            if (TimeSeriesData?.TimeSeries == null || TimeSeriesData.TimeSeries.Count == 0)
+            {
+                ErrorMessage = $"No {type.ToLower()} data available to save.";
+                return;
+            }
+
+            // Build CSV rows
+            var csvRows = new List<string>
+            {
+                "Date,Open,High,Low,Close,Volume"
+            };
+
+            // Sort by date ascending
+            foreach (var kvp in TimeSeriesData.TimeSeries.OrderBy(k => k.Key))
+            {
+                var date = kvp.Key;        // e.g. "2025-01-14"
+                var data = kvp.Value;      // AvOHLCVolume
+                csvRows.Add(
+                    $"{date},{data.Open},{data.High},{data.Low},{data.Close},{data.Volume}"
+                );
+            }
+
+            var csvContent = string.Join(Environment.NewLine, csvRows);
+
+            // Example: save to My Documents folder. Change path as needed.
+            var filePath = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
+                $"{StockSymbol}_{type}Data.csv"
+            );
+
+            // Write the CSV to disk (this works on Blazor Server)
+            await File.WriteAllTextAsync(filePath, csvContent, Encoding.UTF8);
+
+            ErrorMessage = $"{type} CSV file saved successfully to {filePath}";
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = $"Error saving {type} CSV: {ex.Message}";
+        }
+    }
+
+    // -------------------------------------------------
+    // -------------------- MODELS ---------------------
+    // -------------------------------------------------
+
+    /// <summary>
+    /// GLOBAL QUOTE
+    /// </summary>
+    public class AvGlobalQuoteResponse
+    {
+        [JsonPropertyName("Global Quote")]
+        public AvGlobalQuoteData? GlobalQuote { get; set; }
+    }
+
+    public class AvGlobalQuoteData
+    {
+        [JsonPropertyName("01. symbol")]
+        public string Symbol { get; set; } = string.Empty;
+
+        [JsonPropertyName("05. price")]
+        public string Price { get; set; } = string.Empty;
+
+        [JsonPropertyName("09. change")]
+        public string Change { get; set; } = string.Empty;
+    }
+
+    /// <summary>
+    /// TIME SERIES (intraday/daily/weekly/monthly)
+    /// </summary>
+    public class AvTimeSeriesResponse
+    {
+        [JsonPropertyName("Meta Data")]
+        public AvTimeSeriesMetaData MetaData { get; set; } = new();
+
+        [JsonPropertyName("TimeSeries")]
+        public Dictionary<string, AvOHLCVolume>? TimeSeries { get; set; } = new();
+    }
+
+    public class AvTimeSeriesMetaData
+    {
+        [JsonPropertyName("1. Information")]
+        public string Information { get; set; } = string.Empty;
+
+        [JsonPropertyName("2. Symbol")]
+        public string Symbol { get; set; } = string.Empty;
+
+        [JsonPropertyName("3. Last Refreshed")]
+        public string LastRefreshed { get; set; } = string.Empty;
+
+        [JsonPropertyName("4. Interval")]
+        public string Interval { get; set; } = string.Empty;
+
+        [JsonPropertyName("5. Output Size")]
+        public string OutputSize { get; set; } = string.Empty;
+
+        [JsonPropertyName("6. Time Zone")]
+        public string TimeZone { get; set; } = string.Empty;
+    }
+
+    public class AvOHLCVolume
+    {
+        [JsonPropertyName("1. open")]
+        public string Open { get; set; } = "0";
+
+        [JsonPropertyName("2. high")]
+        public string High { get; set; } = "0";
+
+        [JsonPropertyName("3. low")]
+        public string Low { get; set; } = "0";
+
+        [JsonPropertyName("4. close")]
+        public string Close { get; set; } = "0";
+
+        [JsonPropertyName("5. volume")]
+        public string Volume { get; set; } = "0";
+    }
+
+    /// <summary>
+    /// COMPANY OVERVIEW
+    /// </summary>
+    public class AvCompanyOverviewResponse
+    {
+        [JsonPropertyName("Symbol")]
+        public string Symbol { get; set; } = string.Empty;
+
+        [JsonPropertyName("AssetType")]
+        public string AssetType { get; set; } = string.Empty;
+
+        [JsonPropertyName("Name")]
+        public string Name { get; set; } = string.Empty;
+
+        [JsonPropertyName("Description")]
+        public string Description { get; set; } = string.Empty;
+
+        [JsonPropertyName("Sector")]
+        public string Sector { get; set; } = string.Empty;
+
+        [JsonPropertyName("Industry")]
+        public string Industry { get; set; } = string.Empty;
+
+        [JsonPropertyName("MarketCapitalization")]
+        public string MarketCapitalization { get; set; } = string.Empty;
+
+        [JsonPropertyName("DividendPerShare")]
+        public string DividendPerShare { get; set; } = string.Empty;
+
+        [JsonPropertyName("EPS")]
+        public string EPS { get; set; } = string.Empty;
+
+        [JsonPropertyName("PEGRatio")]
+        public string PEGRatio { get; set; } = string.Empty;
+
+        [JsonPropertyName("PERatio")]
+        public string PERatio { get; set; } = string.Empty;
+    }
+}
